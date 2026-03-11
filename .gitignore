@@ -1,0 +1,17 @@
+# Lean build directory
+.lake/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# Virtual environment
+venv/
+
+# Log files
+data/logs/
+*.log
+
+*aristotle_solns*
+*solve_all.sh*

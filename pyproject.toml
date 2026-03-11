@@ -1,0 +1,52 @@
+[project]
+name = "proof-bench"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = [
+    "mcp>=1.21.2",
+    "pytest",
+    "requests",
+    "ruff",
+]
+
+[project.optional-dependencies]
+llm = [
+    "anthropic",
+    "datasets",
+    "openai",
+    "protobuf>=6.0",
+    "model-library",
+]
+dev = [
+    "pre-commit",
+]
+
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["proof_bench*"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+    "B",   # flake8-bugbear
+    "C4",  # flake8-comprehensions
+    "UP",  # pyupgrade
+]
+ignore = [
+    "E501",  # line too long (handled by formatter)
+]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+

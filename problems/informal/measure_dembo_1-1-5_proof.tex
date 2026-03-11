@@ -1,0 +1,13 @@
+Let \(\{A_n\}_{n=1}^\infty\) be a sequence of pairwise disjoint sets in $\mathcal{F}$ and let
+\(A = \bigcup_{n=1}^\infty A_n.\)
+Since $\mu$ is finitely additive, we have for each \(N\)
+\[\mu\left( \bigcup_{n=1}^N A_n \right) = \sum_{n=1}^N \mu(A_n).\]
+Define \(B_N := \bigcup_{n=N+1}^\infty A_n\).
+Then \(A = \left( \bigcup_{n=1}^N A_n \right) \cup B_N\), with disjoint union. Hence, by finite 
+additivity,
+\[\mu(A) = \sum_{n=1}^N \mu(A_n) + \mu(B_N).\]
+Since \(B_N \downarrow \emptyset\) as \(N \to \infty\), and \(\mu(B_N) \leq \mu(A) \leq \mu(\Omega) 
+< \infty\), the ``continuity from above'' property implies \(\mu(B_N) \to 0.\)
+Therefore,
+\[\mu(A) = \lim_{N \to \infty} \sum_{n=1}^N \mu(A_n) = \sum_{n=1}^\infty \mu(A_n),\]
+which proves that $\mu$ is countably additive.
