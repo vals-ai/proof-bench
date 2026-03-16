@@ -5,15 +5,15 @@ from __future__ import annotations
 import json
 import logging
 import os
-import shutil
-import time
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from model_library.agent import AgentResult
 from vals.sdk.types import OutputObject
 
 from proof_bench.service import ProofBenchService
+from proof_bench.tools import resolve_stdio_command
 
 logger = logging.getLogger(__name__)
 
@@ -30,18 +30,24 @@ _DEFAULTS = {
 }
 
 
+def agent_result_to_output_object(result: AgentResult) -> OutputObject:
+    metadata = result.final_aggregated_metadata
+    return OutputObject(
+        llm_output=result.final_answer,
+        in_tokens=metadata.in_tokens,
+        out_tokens=metadata.out_tokens,
+        reasoning_tokens=metadata.reasoning_tokens,
+        cache_read_tokens=metadata.cache_read_tokens,
+        cache_write_tokens=metadata.cache_write_tokens,
+        duration=result.final_duration_seconds,
+        cost=metadata.cost.total if metadata.cost else None,
+        output_context=result.model_dump(),
+        error=str(result.final_error) if result.final_error else None,
+    )
+
+
 def _env_enabled(name: str) -> bool:
     return os.getenv(name, "").strip().lower() in {"1", "true", "yes", "on"}
-
-
-def _resolve_stdio_command() -> list[str]:
-    if uvx := shutil.which("uvx"):
-        return [uvx, "lean-lsp-mcp", "--transport", "stdio"]
-    if python3 := shutil.which("python3"):
-        return [python3, "-m", "lean_lsp_mcp", "--transport", "stdio"]
-    if python := shutil.which("python"):
-        return [python, "-m", "lean_lsp_mcp", "--transport", "stdio"]
-    raise RuntimeError("Could not find uvx/python3/python to launch lean-lsp-mcp")
 
 
 def _make_tool_config() -> dict:
@@ -50,7 +56,7 @@ def _make_tool_config() -> dict:
     config: dict[str, Any] = {
         "transport": "stdio",
         "project_path": str(_PROOF_BENCH_ROOT),
-        "stdio_command": _resolve_stdio_command(),
+        "stdio_command": resolve_stdio_command(),
     }
     if daemon_url := os.getenv("LOOGLE_DAEMON_URL"):
         config["loogle_daemon_url"] = daemon_url
@@ -126,7 +132,6 @@ async def get_custom_model(model_name: str, parameters: dict, *args, **kwargs):
         if isinstance(log_dir, str):
             log_dir = Path(log_dir).expanduser()
 
-        start = time.perf_counter()
         try:
             result = await service.solve_problem(
                 problem_id=config["problem_id"],
@@ -143,23 +148,28 @@ async def get_custom_model(model_name: str, parameters: dict, *args, **kwargs):
             logger.exception("Proof Bench run failed: %s", exc)
             return {"llm_output": "ERROR", "output_context": {"error": str(exc)}}
 
-        duration = time.perf_counter() - start
-        return OutputObject(
-            llm_output="true" if result.pass_at_k else "false",
-            in_tokens=result.total_input_tokens,
-            out_tokens=result.total_output_tokens,
-            duration=duration,
-            cost=result.total_cost,
-            output_context={
+        if not result.agent_results:
+            return OutputObject(
+                llm_output="false",
+                output_context={
+                    "problem_id": result.id,
+                    "pass_at_k": False,
+                    "attempts": result.attempts,
+                    "error": "all attempts failed without producing an AgentResult",
+                },
+            )
+
+        agent_result = result.agent_results[-1]
+        output = agent_result_to_output_object(agent_result)
+        output.llm_output = "true" if result.pass_at_k else "false"
+        output.output_context.update(
+            {
+                "output_dir": str(agent_result.output_dir),
                 "problem_id": result.id,
                 "pass_at_k": result.pass_at_k,
                 "attempts": result.attempts,
                 "successful_attempts": result.successful_attempts,
                 "total_attempts": result.total_attempts,
-                "query_metadata": {
-                    "cost": {"total": result.total_cost},
-                    **result.token_usage,
-                },
                 "config": {
                     "dataset": config["dataset"],
                     "include_nl_proof": config["include_nl_proof"],
@@ -167,7 +177,8 @@ async def get_custom_model(model_name: str, parameters: dict, *args, **kwargs):
                     "k": config["k"],
                     "model": config["model"],
                 },
-            },
+            }
         )
+        return output
 
     return custom_call

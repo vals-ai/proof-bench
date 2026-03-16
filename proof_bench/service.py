@@ -73,7 +73,7 @@ class ProofBenchService:
         if isinstance(log_dir, str):
             log_dir = Path(log_dir).expanduser()
 
-        problem_result, _attempts = await _process_single_problem(
+        return await _process_single_problem(
             problem,
             model,
             k,
@@ -83,4 +83,3 @@ class ProofBenchService:
             log_dir,
             max_turns,
         )
-        return problem_result

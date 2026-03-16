@@ -10,23 +10,18 @@ import shutil
 import time
 import weakref
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Literal
+from typing import Any, Literal
 
 from mcp import ClientSession
 from mcp.client.stdio import StdioServerParameters, stdio_client
-from model_library.base import ToolBody, ToolDefinition
-from model_library.registry_utils import get_registry_model  # noqa: F401 (re-exported)
+from model_library.agent import Tool, ToolOutput
 from typing_extensions import TypedDict
-
-if TYPE_CHECKING:
-    from model_library.base import ToolCall
 
 logger = logging.getLogger(__name__)
 
 MAX_TIMEOUT = 90
 BOOTSTRAP_TIMEOUT_SECONDS = 600
 MCP_INIT_ATTEMPTS = 3
-RESULT_EXCERPT_LENGTH = 400
 
 
 class ToolConfig(TypedDict, total=False):
@@ -71,17 +66,11 @@ def resolve_stdio_command(config: ToolConfig | None = None) -> list[str]:
     if python := shutil.which("python"):
         return [python, "-m", "lean_lsp_mcp", "--transport", "stdio"]
 
-    raise RuntimeError(
-        "Could not find launcher for lean-lsp-mcp. Expected one of: uvx, python3, or python in PATH."
-    )
+    raise RuntimeError("Could not find launcher for lean-lsp-mcp. Expected one of: uvx, python3, or python in PATH.")
 
 
 def _json_error(message: str, **extra: Any) -> str:
     return json.dumps({"error": message, **extra})
-
-
-def _tool_error(message: str) -> tuple[str, dict[str, Any]]:
-    return _json_error(message), {"error": message}
 
 
 def _loogle_local_enabled(config: ToolConfig) -> bool:
@@ -132,12 +121,7 @@ def _project_key(config: ToolConfig) -> str:
 
 def _is_missing_olean_failure(result_text: str) -> bool:
     text = result_text.lower()
-    return (
-        "lake setup-file" in text
-        and "no such file or directory" in text
-        and ".olean" in text
-        and "mathlib" in text
-    )
+    return "lake setup-file" in text and "no such file or directory" in text and ".olean" in text and "mathlib" in text
 
 
 async def _run_bootstrap_command(command: list[str], cwd: str) -> tuple[bool, str]:
@@ -527,191 +511,205 @@ def _improve_loogle_error(result: str, query: str) -> str:
     return result
 
 
-def _parse_args(tool_call: ToolCall) -> Any:
-    """Parse tool call arguments (handles both dict and JSON string)."""
-    args = tool_call.args
-    if isinstance(args, dict):
-        return args
-    try:
-        return json.loads(args)
-    except (json.JSONDecodeError, TypeError) as e:
-        raise ValueError(f"Invalid arguments: {e}") from e
-
-
-async def _execute_loogle_query(query: str, max_results: int, config: ToolConfig) -> tuple[str, str]:
+async def _execute_loogle_query(query: str, max_results: int, config: ToolConfig) -> str:
     daemon_url = config.get("loogle_daemon_url") or os.getenv("LOOGLE_DAEMON_URL")
     if daemon_url:
         try:
-            result = await _query_loogle_daemon(daemon_url, query, max_results)
+            return await _query_loogle_daemon(daemon_url, query, max_results)
         except Exception as e:
-            result = _json_error(f"Daemon query failed: {e}")
-        return result, "daemon"
+            return _json_error(f"Daemon query failed: {e}")
 
     client = await _get_stdio_client(config)
-    result = await client.call_tool("lean_loogle", {"query": query, "max_results": max_results})
-    return result, "mcp"
+    return await client.call_tool("lean_loogle", {"query": query, "max_results": max_results})
 
 
-def create_loogle_tool(config: ToolConfig) -> ToolDefinition:
-    """Create tool definition for Loogle lemma search."""
-    max_results = max(1, config.get("max_results", 8))
-
-    body = ToolBody(
-        name="lean_loogle",
-        description=(
-            "Search Mathlib for lemmas. Use sparingly, only when you need "
-            "a specific lemma or to check if a definition/result exists."
-        ),
-        properties={
-            "query": {
-                "type": "string",
-                "description": (
-                    "Query patterns (use ONLY ONE pattern per query, do NOT combine): "
-                    '- Substring search: "differ" (with quotes, finds lemmas with "differ" in name); '
-                    "- Constant lookup: Real.sin (no quotes, finds lemmas mentioning this constant); "
-                    "- Type pattern: _ * (_ ^ _) (with underscores as wildcards); "
-                    "- Conclusion pattern: |- tsum _ = _ * tsum _. "
-                    "IMPORTANT: Do NOT mix patterns like '\"foo\" bar' - use one pattern type per query."
-                ),
-            },
-            "max_results": {
-                "type": "integer",
-                "description": "Max number of search results to return.",
-                "default": max_results,
-                "minimum": 1,
-                "maximum": 20,
-            },
-        },
-        required=["query"],
-    )
-    return ToolDefinition(name="lean_loogle", body=body)
-
-
-async def execute_loogle_tool(tool_call: ToolCall, config: ToolConfig) -> tuple[str, dict[str, Any]]:
-    """Execute lean_loogle tool call."""
-    log_details: dict[str, Any] = {}
-
-    try:
-        args = _parse_args(tool_call)
-    except ValueError as e:
-        return _tool_error(str(e))
-
-    query = args.get("query", "")
-    if not query:
-        return _tool_error("Missing: query")
-
-    max_results = args.get("max_results", config.get("max_results", 8))
-    log_details["arguments"] = {"query": query, "max_results": max_results}
-    result, source = await _execute_loogle_query(query, max_results, config)
-    log_details["source"] = source
-
-    result = _improve_loogle_error(result, query)
-    log_details["result_excerpt"] = result[:RESULT_EXCERPT_LENGTH]
-    return result, log_details
-
-
-def create_run_code_tool(config: ToolConfig) -> ToolDefinition:
-    """Create tool definition for running Lean code."""
-    _ = config
-
-    body = ToolBody(
-        name="lean_run_code",
-        description=(
-            "Execute Lean code and return compilation results with feedback. "
-            "Use to check if proofs compile and get errors/warnings on partial attempts."
-        ),
-        properties={
-            "code": {
-                "type": "string",
-                "description": "Complete Lean code including imports, definitions, and proof.",
-            },
-            "timeout": {
-                "type": "number",
-                "description": "Timeout in seconds (cannot be more than 90 seconds).",
-                "maximum": 90,
-            },
-        },
-        required=["code"],
-    )
-    return ToolDefinition(name="lean_run_code", body=body)
-
-
-async def run_lean_code(code: str, timeout: int, config: ToolConfig) -> tuple[str, dict[str, Any]]:
+async def run_lean_code(code: str, timeout: int, config: ToolConfig) -> str:
     """Run Lean code via MCP. Used by both tool execution and proof verification."""
     timeout = _normalize_timeout(timeout)
-    log_details: dict[str, Any] = {"timeout": timeout, "code_excerpt": code[:200]}
-
     client = await _get_stdio_client(config)
     result = await client.call_tool("lean_run_code", {"code": code, "timeout": timeout})
 
     if _is_missing_olean_failure(result):
-        recovered, recovery_details, attempted = await _attempt_project_recovery(config)
-        log_details["recovery_attempted"] = attempted
-        log_details["recovery_succeeded"] = recovered
-        log_details["recovery_details_excerpt"] = recovery_details[:RESULT_EXCERPT_LENGTH]
+        recovered, _, _ = await _attempt_project_recovery(config)
         if recovered:
             result = await client.call_tool("lean_run_code", {"code": code, "timeout": timeout})
-            log_details["retried_after_recovery"] = True
 
     if "sorry" in code.lower():
         result += "\n\n⚠️ WARNING: Code contains 'sorry'. This is not a complete proof."
 
-    log_details["result_excerpt"] = result[:RESULT_EXCERPT_LENGTH]
-    return result, log_details
+    return result
 
 
-async def execute_run_code_tool(tool_call: ToolCall, config: ToolConfig) -> tuple[str, dict[str, Any]]:
-    """Execute lean_run_code tool call."""
-    try:
-        args = _parse_args(tool_call)
-    except ValueError as e:
-        return _tool_error(str(e))
-
-    code = args.get("code", "")
-    if not code:
-        return _tool_error("Missing: code")
-
-    timeout = _normalize_timeout(args.get("timeout", MAX_TIMEOUT))
-    return await run_lean_code(code, timeout, config)
+# ---------------------------------------------------------------------------
+# Tool subclasses for model_library Agent
+# ---------------------------------------------------------------------------
 
 
-def create_submission_tool() -> ToolDefinition:
-    """Create tool definition for submitting a proof."""
-    body = ToolBody(
-        name="submit_proof",
-        description=(
-            "Submit your final Lean proof for verification. "
-            "IMPORTANT: You MUST call this tool to have your proof graded. "
-            "Work that is not submitted will NOT be evaluated. "
-            "You cannot continue working after calling this tool."
-        ),
-        properties={
-            "proof": {
-                "type": "string",
-                "description": "Lean proof starting with `by`.",
-            },
-        },
-        required=["proof"],
+class LoogleTool(Tool):
+    """Loogle lemma search tool for model_library Agent."""
+
+    name = "lean_loogle"
+    description = (
+        "Search Mathlib for lemmas. Use sparingly, only when you need "
+        "a specific lemma or to check if a definition/result exists."
     )
-    return ToolDefinition(name="submit_proof", body=body)
+    parameters = {
+        "query": {
+            "type": "string",
+            "description": (
+                "Query patterns (use ONLY ONE pattern per query, do NOT combine): "
+                '- Substring search: "differ" (with quotes, finds lemmas with "differ" in name); '
+                "- Constant lookup: Real.sin (no quotes, finds lemmas mentioning this constant); "
+                "- Type pattern: _ * (_ ^ _) (with underscores as wildcards); "
+                "- Conclusion pattern: |- tsum _ = _ * tsum _. "
+                "IMPORTANT: Do NOT mix patterns like '\"foo\" bar' - use one pattern type per query."
+            ),
+        },
+        "max_results": {
+            "type": "integer",
+            "description": "Max number of search results to return.",
+            "default": 8,
+            "minimum": 1,
+            "maximum": 20,
+        },
+    }
+    required = ["query"]
+
+    def __init__(self, config: ToolConfig):
+        super().__init__()
+        self._config = config
+        self._default_max_results = max(1, config.get("max_results", 8))
+        self._is_local = bool(
+            config.get("loogle_local")
+            or config.get("loogle_daemon_url")
+            or os.getenv("LEAN_LOOGLE_LOCAL", "").lower() == "true"
+            or os.getenv("LOOGLE_DAEMON_URL")
+        )
+
+    async def execute(self, args: dict[str, Any], state: dict[str, Any], logger: logging.Logger) -> ToolOutput:
+        query = args.get("query", "")
+        if not query:
+            return ToolOutput(output=_json_error("Missing: query"), error="Missing: query")
+
+        max_results = args.get("max_results", self._default_max_results)
+        try:
+            result = await _execute_loogle_query(query, max_results, self._config)
+            result = _improve_loogle_error(result, query)
+        except Exception as e:
+            logger.exception("Loogle query failed")
+            return ToolOutput(output=_json_error(f"Loogle query failed: {e}"), error=str(e))
+
+        if not self._is_local:
+            await asyncio.sleep(15)
+
+        return ToolOutput(output=result)
 
 
-def extract_submission(tool_call: ToolCall) -> tuple[str, dict[str, Any]]:
-    """Extract the submitted proof from a submit_proof tool call."""
-    log_details: dict[str, Any] = {}
+class RunCodeTool(Tool):
+    """Lean code execution tool for model_library Agent."""
 
-    try:
-        args = _parse_args(tool_call)
-    except ValueError as e:
-        log_details["error"] = str(e)
-        return _json_error(str(e)), log_details
+    name = "lean_run_code"
+    description = (
+        "Execute Lean code and return compilation results with feedback. "
+        "Use to check if proofs compile and get errors/warnings on partial attempts."
+    )
+    parameters = {
+        "code": {
+            "type": "string",
+            "description": "Complete Lean code including imports, definitions, and proof.",
+        },
+        "timeout": {
+            "type": "number",
+            "description": "Timeout in seconds (cannot be more than 90 seconds).",
+            "maximum": 90,
+        },
+    }
+    required = ["code"]
 
-    proof = args.get("proof") if isinstance(args, dict) else args if isinstance(args, str) else None
+    def __init__(self, config: ToolConfig):
+        super().__init__()
+        self._config = config
 
-    if not proof:
-        log_details["error"] = "Missing: proof"
-        return _json_error("Missing: proof"), log_details
+    async def execute(self, args: dict[str, Any], state: dict[str, Any], logger: logging.Logger) -> ToolOutput:
+        code = args.get("code", "")
+        if not code:
+            return ToolOutput(output=_json_error("Missing: code"), error="Missing: code")
 
-    log_details["submitted"] = True
-    log_details["proof_excerpt"] = str(proof)[:RESULT_EXCERPT_LENGTH]
-    return str(proof), log_details
+        timeout = _normalize_timeout(args.get("timeout", MAX_TIMEOUT))
+        try:
+            result = await run_lean_code(code, timeout, self._config)
+        except Exception as e:
+            logger.exception("Run code failed")
+            return ToolOutput(output=_json_error(f"Run code failed: {e}"), error=str(e))
+
+        return ToolOutput(output=result)
+
+
+class SubmitProofTool(Tool):
+    """Proof submission and verification tool for model_library Agent."""
+
+    name = "submit_proof"
+    description = (
+        "Submit your final Lean proof for verification. "
+        "IMPORTANT: You MUST call this tool to have your proof graded. "
+        "Work that is not submitted will NOT be evaluated. "
+        "You cannot continue working after calling this tool."
+    )
+    parameters = {
+        "proof": {
+            "type": "string",
+            "description": "Lean proof starting with `by`.",
+        },
+    }
+    required = ["proof"]
+
+    def __init__(self, run_code_config: ToolConfig | None, problem_context: dict[str, str]):
+        super().__init__()
+        self._run_code_config = run_code_config
+        self._problem_context = problem_context
+
+    async def execute(self, args: dict[str, Any], state: dict[str, Any], logger: logging.Logger) -> ToolOutput:
+        proof = args.get("proof")
+        if not proof:
+            return ToolOutput(output=_json_error("Missing: proof"), error="Missing: proof")
+
+        proof = str(proof)
+        is_valid, verify_msg = await self._verify(proof, logger)
+
+        state["proof_text"] = proof
+        state["verified"] = is_valid
+        state["verify_message"] = verify_msg
+
+        return ToolOutput(output=verify_msg, done=True)
+
+    async def _verify(self, proof: str, logger: logging.Logger) -> tuple[bool, str]:
+        """Verify a submitted proof by running it through Lean."""
+        if not self._run_code_config:
+            return True, "Verification skipped (no run_code_config)"
+
+        header = self._problem_context.get("header", "")
+        formal = self._problem_context.get("formal", "")
+        if not formal:
+            return True, "Verification skipped (no formal statement)"
+
+        formal_clean = formal
+        if ":=" in formal_clean:
+            formal_clean = formal_clean.split(":=")[0].strip() + " :="
+
+        if "sorry" in proof.lower():
+            return False, "Proof contains 'sorry' - incomplete proof"
+
+        full_code = f"{header}\n\n{formal_clean}\n{proof}"
+        try:
+            result_text = await run_lean_code(full_code, timeout=90, config=self._run_code_config)
+        except Exception as e:
+            logger.exception("Verification failed")
+            return False, f"Verification error: {e}"
+
+        result_lower = result_text.lower()
+        if "error" in result_lower:
+            return False, f"Lean error: {result_text[:500]}"
+        if "unsolved goals" in result_lower:
+            return False, f"Proof incomplete: {result_text[:500]}"
+
+        return True, "Proof verified successfully"
