@@ -22,7 +22,7 @@ class ProofBenchService:
 
     @staticmethod
     def _is_exported_dataset(dataset: str) -> bool:
-        return dataset in ("exported", "proof_bench") or dataset.startswith("exported_")
+        return dataset in ("exported", "proof_bench", "atp_bench") or dataset.startswith("exported_")
 
     def _get_exported_dataset(self, alias: str) -> list[dict[str, Any]]:
         if alias == "exported":
