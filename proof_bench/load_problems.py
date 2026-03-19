@@ -2,6 +2,7 @@
 
 import json
 import logging
+import os
 import re
 from pathlib import Path
 from typing import Any
@@ -9,6 +10,7 @@ from typing import Any
 logger = logging.getLogger(__name__)
 _THEOREM_PATTERN = re.compile(r"(theorem\s+\w+.*?:=)", re.DOTALL)
 _REPO_ROOT = Path(__file__).resolve().parent.parent
+_WRAPPER_DATA = _REPO_ROOT.parent.parent / "data"
 _EXPORTED_FILE = Path("data") / "proof-bench.jsonl"
 _STANDALONE_ROOT = Path("/home/ec2-user/proof-bench")
 
@@ -33,6 +35,18 @@ def _build_problem_entry(
 
 
 def _resolve_exported_paths() -> tuple[Path, Path]:
+    env_override = os.environ.get("PROOF_BENCH_DATA")
+    if env_override:
+        p = Path(env_override)
+        if (p / "proof-bench.jsonl").exists():
+            return p / "proof-bench.jsonl", p
+
+    # proof_bench/data/ (private data alongside the benchmark wrapper)
+    wrapper_file = _WRAPPER_DATA / "proof-bench.jsonl"
+    if wrapper_file.exists():
+        return wrapper_file, _WRAPPER_DATA
+
+    # public_harness/data/ (submodule's own data dir)
     output_file = _REPO_ROOT / _EXPORTED_FILE
     if output_file.exists():
         return output_file, _REPO_ROOT
@@ -41,7 +55,9 @@ def _resolve_exported_paths() -> tuple[Path, Path]:
     if standalone_file.exists():
         return standalone_file, _STANDALONE_ROOT
 
-    raise FileNotFoundError(f"Data file not found: {output_file} or {standalone_file}")
+    raise FileNotFoundError(
+        f"Data file not found in any of: {_WRAPPER_DATA}, {_REPO_ROOT / 'data'}, {_STANDALONE_ROOT / 'data'}"
+    )
 
 
 def load_exported_problems() -> list[dict[str, Any]]:
