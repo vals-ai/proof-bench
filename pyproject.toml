@@ -4,18 +4,13 @@ version = "0.1.0"
 requires-python = ">=3.11"
 dependencies = [
     "mcp>=1.21.2",
-    "pytest",
-    "requests",
-    "ruff",
+    "model-library==0.1.19",
 ]
 
 [project.optional-dependencies]
-llm = [
-    "datasets",
-    "model-library==0.1.15",
-]
 dev = [
-    "pre-commit",
+    "pytest",
+    "ruff",
 ]
 
 [build-system]

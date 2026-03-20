@@ -6,18 +6,9 @@ This document contains the engineering and environment setup details for working
 
 ```bash
 curl -LsSf https://astral.sh/uv/install.sh | sh
-uv venv
+make install
 source .venv/bin/activate
-uv pip install -e ".[llm]"
 ```
-
-For development without LLM integrations:
-
-```bash
-uv pip install -e .
-```
-
-`[llm]` includes the public `model-library` dependency for model access.
 
 ## Lean 4
 
@@ -157,12 +148,9 @@ loogle_config = {
 ## Development
 
 ```bash
-pre-commit install
-pre-commit run --all-files
-ruff check .
-ruff format .
+make style
+make test
 lake build
-pytest tests/
 ```
 
 ## Upgrading Lean Or Mathlib

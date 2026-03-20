@@ -20,7 +20,7 @@ from model_library.agent import (
     TurnLimit,
     TurnResult,
 )
-from model_library.base import SystemInput, TextInput
+from model_library.base import TextInput
 from model_library.base.input import InputItem, RawResponse, ToolDefinition
 from model_library.registry_utils import get_registry_model
 
@@ -61,12 +61,17 @@ def _tool_filter(turn_number: int, max_turns: int, tools: list[ToolDefinition]) 
 
 
 def _should_stop(turn_result: TurnResult) -> bool:
+    # Default would stop on text-only responses (no tool calls). Override to keep
+    # the agent running — _before_query injects a continuation prompt instead.
     return False
 
 
 def _before_query(history: list[InputItem], last_error: Exception | None) -> list[InputItem]:
     if last_error:
         raise last_error
+    # RawResponse is the model's raw response and is always appended to history.
+    # If it's still the last item (no ToolResults following it), the model responded
+    # with text only — inject a continuation prompt to keep the agent going.
     if history and isinstance(history[-1], RawResponse):
         history.append(
             TextInput(
@@ -134,7 +139,7 @@ async def run_agent(
 
     input_items: list[InputItem] = []
     if system_prompt:
-        input_items.append(SystemInput(text=system_prompt))
+        input_items.append(TextInput(text=system_prompt))
     input_items.append(TextInput(text=query_text))
 
     agent = Agent(

@@ -17,7 +17,8 @@ Setup, local Loogle configuration, development commands, and platform run instru
 - `problems/`: Lean theorem files plus informal statements/proofs under `problems/informal/`. The folder only has sample problems; the rest of the benchmark is private.
 - `data/proof-bench.jsonl`: exported metadata used at runtime
 - `proof_bench/agent.py`: agent loop and tool orchestration
-- `proof_bench/tools.py`: `lean_run_code`, `lean_loogle`, and `submit_proof`
+- `proof_bench/tools.py`: `lean_run_code`, `lean_loogle`, and `submit_proof` tool subclasses
+- `proof_bench/mcp_client.py`: MCP client infrastructure and Lean execution
 - `proof_bench/prover.py`: attempt execution, aggregation, and logging
 - `proof_bench/load_problems.py`: exported dataset loader
 - `proof_bench/validate_and_export.py`: metadata validation and JSONL export
@@ -42,6 +43,7 @@ python main.py --dataset exported --domains logic number_theory --model openai/g
 ## Where To Look Next
 
 - `SETUP.md`: installation, MCP/Loogle setup, local cache generation, development workflow, CI, and platform runs
-- `proof_bench/tools.py`: tool definitions and MCP plumbing
+- `proof_bench/tools.py`: tool subclasses (`lean_run_code`, `lean_loogle`, `submit_proof`)
+- `proof_bench/mcp_client.py`: MCP client infrastructure and Lean execution
 - `proof_bench/agent.py`: agent loop
 - `proof_bench/prover.py`: attempt execution and result aggregation

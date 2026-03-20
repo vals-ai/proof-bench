@@ -9,11 +9,10 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from model_library.agent import AgentResult
 from vals.sdk.types import OutputObject
 
 from proof_bench.service import ProofBenchService
-from proof_bench.tools import resolve_stdio_command
+from proof_bench.mcp_client import resolve_stdio_command
 
 logger = logging.getLogger(__name__)
 
@@ -28,22 +27,6 @@ _DEFAULTS = {
     "include_nl_proof": False,
     "max_turns": 40,
 }
-
-
-def agent_result_to_output_object(result: AgentResult) -> OutputObject:
-    metadata = result.final_aggregated_metadata
-    return OutputObject(
-        llm_output=result.final_answer,
-        in_tokens=metadata.in_tokens,
-        out_tokens=metadata.out_tokens,
-        reasoning_tokens=metadata.reasoning_tokens,
-        cache_read_tokens=metadata.cache_read_tokens,
-        cache_write_tokens=metadata.cache_write_tokens,
-        duration=result.final_duration_seconds,
-        cost=metadata.cost.total if metadata.cost else None,
-        output_context=result.model_dump(),
-        error=str(result.final_error) if result.final_error else None,
-    )
 
 
 def _env_enabled(name: str) -> bool:
@@ -132,21 +115,17 @@ async def get_custom_model(model_name: str, parameters: dict, *args, **kwargs):
         if isinstance(log_dir, str):
             log_dir = Path(log_dir).expanduser()
 
-        try:
-            result = await service.solve_problem(
-                problem_id=config["problem_id"],
-                dataset=config["dataset"],
-                model=config["model"],
-                k=config["k"],
-                include_nl_proof=config["include_nl_proof"],
-                log_dir=log_dir,
-                loogle_config=config.get("loogle_config"),
-                run_code_config=config.get("run_code_config"),
-                max_turns=config["max_turns"],
-            )
-        except Exception as exc:
-            logger.exception("Proof Bench run failed: %s", exc)
-            return {"llm_output": "ERROR", "output_context": {"error": str(exc)}}
+        result = await service.solve_problem(
+            problem_id=config["problem_id"],
+            dataset=config["dataset"],
+            model=config["model"],
+            k=config["k"],
+            include_nl_proof=config["include_nl_proof"],
+            log_dir=log_dir,
+            loogle_config=config.get("loogle_config"),
+            run_code_config=config.get("run_code_config"),
+            max_turns=config["max_turns"],
+        )
 
         if not result.agent_results:
             return OutputObject(
@@ -160,25 +139,24 @@ async def get_custom_model(model_name: str, parameters: dict, *args, **kwargs):
             )
 
         agent_result = result.agent_results[-1]
-        output = agent_result_to_output_object(agent_result)
+        output_context = {
+            **agent_result.model_dump(),
+            "output_dir": str(agent_result.output_dir),
+            "problem_id": result.id,
+            "pass_at_k": result.pass_at_k,
+            "attempts": result.attempts,
+            "successful_attempts": result.successful_attempts,
+            "total_attempts": result.total_attempts,
+            "config": {
+                "dataset": config["dataset"],
+                "include_nl_proof": config["include_nl_proof"],
+                "max_turns": config["max_turns"],
+                "k": config["k"],
+                "model": config["model"],
+            },
+        }
+        output = OutputObject.from_agent_result(agent_result, output_context=output_context)
         output.llm_output = "true" if result.pass_at_k else "false"
-        output.output_context.update(
-            {
-                "output_dir": str(agent_result.output_dir),
-                "problem_id": result.id,
-                "pass_at_k": result.pass_at_k,
-                "attempts": result.attempts,
-                "successful_attempts": result.successful_attempts,
-                "total_attempts": result.total_attempts,
-                "config": {
-                    "dataset": config["dataset"],
-                    "include_nl_proof": config["include_nl_proof"],
-                    "max_turns": config["max_turns"],
-                    "k": config["k"],
-                    "model": config["model"],
-                },
-            }
-        )
         return output
 
     return custom_call

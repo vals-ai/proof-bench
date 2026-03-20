@@ -4,7 +4,9 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from model_library.agent import AgentResult
+logger = logging.getLogger(__name__)
+
+from model_library.agent import AgentResult, TurnSummary
 
 from .agent import run_agent
 from .prompts import build_prompt
@@ -140,7 +142,7 @@ async def _run_single_attempt(
             log_dir=log_dir or Path("logs"),
         )
     except Exception as e:
-        logging.warning(f"LLM query failed on attempt {attempt_num + 1}: {e}")
+        logger.warning("LLM query failed on attempt %d: %s", attempt_num + 1, e)
         diagnostic = f"[internal_error] attempt {attempt_num + 1} failed: {type(e).__name__}: {e}"
         return ProofResult(attempt_num + 1, False, diagnostic, diagnostic)
 
@@ -159,7 +161,13 @@ async def _run_single_attempt(
         formal_code = formal_code.split(":=")[0].strip() + " :="
     full_code = f"{clean_header}\n{formal_code}\n{processed_response}"
 
-    is_valid = result.state.get("verified", False)
+    is_valid = any(
+        tc.success
+        for turn in result.turns
+        if isinstance(turn, TurnSummary)
+        for tc in turn.tool_calls
+        if tc.tool_name == "submit_proof" and tc.done
+    )
     return ProofResult(attempt_num + 1, is_valid, response, processed_response, full_code, agent_result=result)
 
 
@@ -194,7 +202,7 @@ async def _process_single_problem(
         return ProblemResult(item["id"], attempts)
     finally:
         try:
-            from proof_bench.tools import cleanup_current_task_mcp_client
+            from proof_bench.mcp_client import cleanup_current_task_mcp_client
 
             await asyncio.wait_for(cleanup_current_task_mcp_client(), timeout=20)
         except (TimeoutError, Exception):
@@ -212,7 +220,7 @@ def run_proving_pipeline(
     max_turns: int = 40,
 ) -> tuple[list[ProblemResult], dict[str, Any]]:
     """Run the proving pipeline on a dataset."""
-    from .tools import _loop_exception_handlers, _suppress_mcp_cleanup_errors
+    from .mcp_client import _loop_exception_handlers, _suppress_mcp_cleanup_errors
 
     loop = None
     start_time = datetime.now()
