@@ -141,7 +141,19 @@ def main() -> None:
         help="Run only problems whose IDs contain any of these substrings",
     )
     parser.add_argument("--include-nl-proof", action="store_true", default=False)
-    parser.add_argument("--enable-loogle", action="store_true", default=False)
+    parser.add_argument(
+        "--no-loogle",
+        dest="enable_loogle",
+        action="store_false",
+        help="Disable the Loogle lemma search tool",
+    )
+    parser.add_argument(
+        "--enable-loogle",
+        dest="enable_loogle",
+        action="store_true",
+        help="Enable Loogle (default: on)",
+    )
+    parser.set_defaults(enable_loogle=True)
     parser.add_argument("--loogle-local", action="store_true", default=False)
 
     args = parser.parse_args()

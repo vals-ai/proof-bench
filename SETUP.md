@@ -76,11 +76,10 @@ Install it with:
 uv tool install lean-lsp-mcp
 ```
 
-Run with Loogle enabled:
+Loogle is enabled by default. Use `--no-loogle` to turn it off. For local search:
 
 ```bash
-python main.py --dataset exported --model openai/gpt-4o --k 3 \
-  --enable-loogle --loogle-local
+python main.py --dataset exported --model openai/gpt-4o --k 3 --loogle-local
 ```
 
 Modes:
@@ -141,7 +140,7 @@ python -m proof_bench.loogle_daemon --port 8765
 
 # Terminal 2+
 export LOOGLE_DAEMON_URL=http://127.0.0.1:8765
-python main.py --dataset exported --model openai/gpt-4o --k 8 --enable-loogle
+python main.py --dataset exported --model openai/gpt-4o --k 8
 ```
 
 Programmatic config:
