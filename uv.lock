@@ -1730,22 +1730,16 @@ dev = [
     { name = "pre-commit" },
 ]
 llm = [
-    { name = "anthropic" },
     { name = "datasets" },
     { name = "model-library" },
-    { name = "openai" },
-    { name = "protobuf" },
 ]
 
 [package.metadata]
 requires-dist = [
-    { name = "anthropic", marker = "extra == 'llm'" },
     { name = "datasets", marker = "extra == 'llm'" },
     { name = "mcp", specifier = ">=1.21.2" },
-    { name = "model-library", marker = "extra == 'llm'" },
-    { name = "openai", marker = "extra == 'llm'" },
+    { name = "model-library", marker = "extra == 'llm'", specifier = "==0.1.15" },
     { name = "pre-commit", marker = "extra == 'dev'" },
-    { name = "protobuf", marker = "extra == 'llm'", specifier = ">=6.0" },
     { name = "pytest" },
     { name = "requests" },
     { name = "ruff" },

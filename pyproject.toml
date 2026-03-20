@@ -12,7 +12,6 @@ dependencies = [
 [project.optional-dependencies]
 llm = [
     "datasets",
-    "protobuf>=6.0",
     "model-library==0.1.15",
 ]
 dev = [
