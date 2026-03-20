@@ -206,7 +206,6 @@ def _install_error_handler():
     try:
         loop = asyncio.get_running_loop()
     except RuntimeError:
-        pass
         return
 
     current_handler = loop.get_exception_handler()

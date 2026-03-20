@@ -19,13 +19,6 @@ from .mcp_client import (
     run_lean_code,
 )
 
-# Re-export infra symbols that other modules import from here
-from .mcp_client import (  # noqa: F401
-    _loop_exception_handlers,
-    _suppress_mcp_cleanup_errors,
-    cleanup_current_task_mcp_client,
-    resolve_stdio_command,
-)
 
 
 class LoogleTool(Tool):
@@ -83,6 +76,7 @@ class LoogleTool(Tool):
             return ToolOutput(output=_json_error(f"Loogle query failed: {e}"), error=str(e))
 
         if not self._is_local:
+            logger.debug("Rate limiting: sleeping 15s (remote loogle)")
             await asyncio.sleep(15)
 
         return ToolOutput(output=result)

@@ -1,29 +1,19 @@
 import argparse
 import json
 import logging
-import shutil
 import sys
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 from proof_bench.load_problems import load_exported_problems
+from proof_bench.mcp_client import resolve_stdio_command
 from proof_bench.prover import run_proving_pipeline
 from proof_bench.tools import ToolConfig
 
 DEFAULT_LOOGLE_TRANSPORT = "stdio"
 DEFAULT_LOOGLE_MAX_RESULTS = 8
 VALID_DATASETS = {"exported"}
-
-
-def _resolve_stdio_command() -> list[str]:
-    if uvx := shutil.which("uvx"):
-        return [uvx, "lean-lsp-mcp", "--transport", "stdio"]
-    if python3 := shutil.which("python3"):
-        return [python3, "-m", "lean_lsp_mcp", "--transport", "stdio"]
-    if python := shutil.which("python"):
-        return [python, "-m", "lean_lsp_mcp", "--transport", "stdio"]
-    raise RuntimeError("Could not find uvx/python3/python to launch lean-lsp-mcp")
 
 
 def validate_args(args: argparse.Namespace) -> None:
@@ -60,11 +50,12 @@ def setup_logging(args: argparse.Namespace) -> tuple[str, Path]:
         log_filename = str(log_dir / f"proof_bench_{model_name}_k{args.k}_temp{args.temperature}.log")
 
     logging.basicConfig(
-        level=logging.DEBUG,
+        level=logging.INFO,
         format="%(asctime)s - %(levelname)s - %(message)s",
         handlers=[logging.FileHandler(log_filename), logging.StreamHandler()],
         force=True,
     )
+    logging.getLogger("proof_bench").setLevel(logging.DEBUG)
 
     return log_filename, log_dir
 
@@ -148,7 +139,7 @@ def build_tool_configs(args: argparse.Namespace) -> tuple[ToolConfig | None, Too
     base_config: ToolConfig = {
         "transport": DEFAULT_LOOGLE_TRANSPORT,
         "project_path": str(Path(__file__).parent),
-        "stdio_command": _resolve_stdio_command(),
+        "stdio_command": resolve_stdio_command(),
     }
 
     run_code_config: ToolConfig = dict(base_config)

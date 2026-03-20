@@ -9,6 +9,7 @@ logger = logging.getLogger(__name__)
 from model_library.agent import AgentResult, TurnSummary
 
 from .agent import run_agent
+from .mcp_client import _loop_exception_handlers, _suppress_mcp_cleanup_errors, cleanup_current_task_mcp_client
 from .prompts import build_prompt
 from .tools import ToolConfig
 from .utils import _strip_leading_empty_lines, _strip_response_and_format_proof, strip_comment_blocks
@@ -202,11 +203,11 @@ async def _process_single_problem(
         return ProblemResult(item["id"], attempts)
     finally:
         try:
-            from proof_bench.mcp_client import cleanup_current_task_mcp_client
-
             await asyncio.wait_for(cleanup_current_task_mcp_client(), timeout=20)
-        except (TimeoutError, Exception):
-            pass
+        except TimeoutError:
+            logger.debug("MCP cleanup timed out")
+        except Exception as e:
+            logger.warning("MCP cleanup failed: %s", e)
 
 
 def run_proving_pipeline(
@@ -220,8 +221,6 @@ def run_proving_pipeline(
     max_turns: int = 40,
 ) -> tuple[list[ProblemResult], dict[str, Any]]:
     """Run the proving pipeline on a dataset."""
-    from .mcp_client import _loop_exception_handlers, _suppress_mcp_cleanup_errors
-
     loop = None
     start_time = datetime.now()
     try:

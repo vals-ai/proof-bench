@@ -20,7 +20,7 @@ def _strip_response_and_format_proof(text: str) -> str | None:
             text = generic_match.group(1)
     text = text.strip()
 
-    by_match = re.search(r"(?:(?<=\s)by(?=\s|$)|^by(?=\s|$))", text, flags=re.IGNORECASE)
+    by_match = re.search(r"(?:(?<=\s)by(?=\s|$)|^by(?=\s|$))", text)
     if by_match:
         text = text[by_match.start() :]
 
