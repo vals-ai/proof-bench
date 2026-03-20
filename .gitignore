@@ -10,8 +10,10 @@ __pycache__/
 venv/
 
 # Log files
-data/logs/
 *.log
+
+# Corpus export and logs — use ../data/ when this repo is embedded under proof_bench/src/
+/data/
 
 *aristotle_solns*
 *solve_all.sh*

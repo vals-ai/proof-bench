@@ -47,7 +47,7 @@ After statement approval, add the formal proof:
 The CI pipeline will:
 - Validate metadata headers
 - Build the Lean project
-- Export to `data/proof-bench.jsonl`
+- Export to the runtime data dir (`data/proof-bench.jsonl` in a standalone clone, or `proof_bench/data/proof-bench.jsonl` when embedded)
 
 Once CI passes and the PR is approved, it will be merged.
 

@@ -39,7 +39,7 @@ Any change to `problems/` should be followed by:
 python proof_bench/validate_and_export.py
 ```
 
-This validates required metadata headers and rebuilds `data/proof-bench.jsonl`.
+This validates required metadata headers and rebuilds `proof-bench.jsonl` under the runtime data directory (`data/` in a standalone clone, or `proof_bench/data/` when embedded under `proof_bench/src/public_harness`).
 
 ## Running The Benchmark
 

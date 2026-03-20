@@ -13,13 +13,13 @@ from typing import Any
 
 from vals.sdk.types import OutputObject
 
+from proof_bench.paths import runtime_data_dir
 from proof_bench.service import ProofBenchService
 
 logger = logging.getLogger(__name__)
 
 _service: ProofBenchService | None = None
-_PROOF_BENCH_ROOT = Path(__file__).parent.parent
-_BASE_LOG_DIR = _PROOF_BENCH_ROOT / "data" / "logs" / "benchmark_runs"
+_BASE_LOG_DIR = runtime_data_dir() / "logs" / "benchmark_runs"
 _LOOGLE_DEFAULT_WARNING_EMITTED = False
 
 _DEFAULTS = {

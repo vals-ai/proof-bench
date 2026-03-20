@@ -10,6 +10,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from proof_bench.metadata_utils import check_no_sorry, export_jsonl, validate_headers
+from proof_bench.paths import runtime_data_dir
 
 
 def validate_and_report(problems_dir: Path) -> bool:
@@ -52,7 +53,7 @@ def main() -> None:
     """Validate Lean files and export metadata from problems/ only."""
     base_dir = Path(__file__).parent.parent
     problems_dir = base_dir / "problems"
-    output_file = base_dir / "data" / "proof-bench.jsonl"
+    output_file = runtime_data_dir() / "proof-bench.jsonl"
 
     if not problems_dir.exists():
         print(f"ERROR: problems directory not found: {problems_dir}")

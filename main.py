@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from proof_bench.load_problems import load_exported_problems
+from proof_bench.paths import runtime_data_dir
 from proof_bench.prover import run_proving_pipeline
 from proof_bench.tools import ToolConfig
 
@@ -46,7 +47,7 @@ def setup_logging(args: argparse.Namespace) -> tuple[str, Path]:
     """Configure logging to file and console."""
     validate_args(args)
 
-    base_log_dir = Path(__file__).parent / "data" / "logs"
+    base_log_dir = runtime_data_dir() / "logs"
     base_log_dir.mkdir(parents=True, exist_ok=True)
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")

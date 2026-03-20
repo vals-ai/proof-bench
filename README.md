@@ -15,7 +15,7 @@ Setup, local Loogle configuration, development commands, and platform run instru
 ## Repo Structure
 
 - `problems/`: Lean theorem files plus informal statements/proofs under `problems/informal/`. The folder only has sample problems; the rest of the benchmark is private.
-- `data/proof-bench.jsonl`: exported metadata used at runtime
+- `data/proof-bench.jsonl`: exported metadata used at runtime (in a standalone clone). When this repo is embedded as `proof_bench/src/public_harness` inside the benchmarks monorepo, metadata and logs live in `proof_bench/data/` instead (nothing under `public_harness/data/`).
 - `proof_bench/agent.py`: agent loop and tool orchestration
 - `proof_bench/tools.py`: `lean_run_code`, `lean_loogle`, and `submit_proof`
 - `proof_bench/prover.py`: attempt execution, aggregation, and logging
