@@ -293,9 +293,10 @@ class StdioMCPClient:
             result = await self._session.call_tool(name=name, arguments=arguments)
 
             if result.isError:
-                error_text = " ".join(
-                    getattr(c, "text", "") for c in getattr(result, "content", [])
-                ).strip() or "Unknown MCP error"
+                error_text = (
+                    " ".join(getattr(c, "text", "") for c in getattr(result, "content", [])).strip()
+                    or "Unknown MCP error"
+                )
                 return json.dumps({"error": error_text})
 
             chunks = []

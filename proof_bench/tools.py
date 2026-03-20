@@ -21,7 +21,6 @@ from .mcp_client import (
 )
 
 
-
 class LoogleTool(Tool):
     """Loogle lemma search tool for model_library Agent."""
 

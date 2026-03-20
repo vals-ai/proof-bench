@@ -11,8 +11,8 @@ from typing import Any
 
 from vals.sdk.types import OutputObject
 
-from proof_bench.service import ProofBenchService
 from proof_bench.mcp_client import resolve_stdio_command
+from proof_bench.service import ProofBenchService
 
 logger = logging.getLogger(__name__)
 

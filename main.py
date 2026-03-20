@@ -60,6 +60,7 @@ def filter_dataset(
         return filtered, problem_id
 
     if domains:
+
         def matches_domain(item: dict[str, Any]) -> bool:
             return any(domain.lower() in item["id"].lower() for domain in domains)
 

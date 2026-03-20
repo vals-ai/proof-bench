@@ -4,8 +4,6 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-logger = logging.getLogger(__name__)
-
 from model_library.agent import AgentResult, TurnSummary
 
 from .agent import run_agent
@@ -13,6 +11,8 @@ from .mcp_client import _loop_exception_handlers, _suppress_mcp_cleanup_errors, 
 from .prompts import build_prompt
 from .tools import ToolConfig
 from .utils import _strip_leading_empty_lines, _strip_response_and_format_proof, strip_comment_blocks
+
+logger = logging.getLogger(__name__)
 
 
 class ProofResult:
