@@ -33,6 +33,14 @@ def _extract_theorem_info(content: str) -> tuple[str, str]:
     return header, formal
 
 
+def _informal_base_name(file_path: Path) -> str:
+    """Stem used for informal/*.tex; strips repeated .lean (e.g. foo.lean.lean → foo)."""
+    name = file_path.stem
+    while name.endswith(".lean"):
+        name = name[: -len(".lean")]
+    return name
+
+
 def _read_informal_file(base_dir: Path, problem_name: str, suffix: str) -> str:
     """Read an informal .tex file for a problem, returning empty string when unavailable."""
     informal_dir = base_dir / "problems" / "informal"
@@ -82,8 +90,9 @@ def export_jsonl(
 
             header, formal = _extract_theorem_info(content)
             problem_name = file_path.stem
-            nl_proof = _find_nl_proof(base, problem_name)
-            statement = _find_statement(base, problem_name)
+            informal_key = _informal_base_name(file_path)
+            nl_proof = _find_nl_proof(base, informal_key)
+            statement = _find_statement(base, informal_key)
 
             entry = {
                 "id": problem_name,
