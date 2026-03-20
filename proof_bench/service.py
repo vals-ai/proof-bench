@@ -17,7 +17,8 @@ class ProofBenchService:
 
     def __init__(self):
         """Initialize the service."""
-        self._exported_problems = None
+        self._exported_problems: list[dict[str, Any]] | None = None
+        self._exported_problem_index: dict[str, dict[str, Any]] = {}
         self._exported_aliases: dict[str, list[dict[str, Any]]] = {}
 
     @staticmethod
@@ -28,6 +29,7 @@ class ProofBenchService:
         if alias == "exported":
             if self._exported_problems is None:
                 self._exported_problems = load_exported_problems()
+                self._exported_problem_index = {p["id"]: p for p in self._exported_problems}
             return self._exported_problems
 
         if alias not in self._exported_aliases:
@@ -44,13 +46,13 @@ class ProofBenchService:
 
     def _get_problem(self, problem_id: str, dataset: str) -> dict | None:
         """Load and return a problem by ID from the specified dataset."""
+        if dataset == "exported":
+            self._get_exported_dataset("exported")  # ensure loaded
+            return self._exported_problem_index.get(problem_id)
+
+        # Alias datasets are small and rarely used; linear scan is fine here.
         problems = self._load_dataset(dataset)
-
-        for problem in problems:
-            if problem["id"] == problem_id:
-                return problem
-
-        return None
+        return next((p for p in problems if p["id"] == problem_id), None)
 
     async def solve_problem(
         self,
@@ -73,7 +75,7 @@ class ProofBenchService:
         if isinstance(log_dir, str):
             log_dir = Path(log_dir).expanduser()
 
-        problem_result, _attempts = await _process_single_problem(
+        return await _process_single_problem(
             problem,
             model,
             k,
@@ -83,4 +85,3 @@ class ProofBenchService:
             log_dir,
             max_turns,
         )
-        return problem_result

@@ -20,7 +20,7 @@ def _strip_response_and_format_proof(text: str) -> str | None:
             text = generic_match.group(1)
     text = text.strip()
 
-    by_match = re.search(r"(?:(?<=\s)by(?=\s|$)|^by(?=\s|$))", text, flags=re.IGNORECASE)
+    by_match = re.search(r"(?:(?<=\s)by(?=\s|$)|^by(?=\s|$))", text)
     if by_match:
         text = text[by_match.start() :]
 
@@ -49,7 +49,14 @@ def _strip_leading_empty_lines(lines: list[str]) -> list[str]:
 
 
 def _detect_commented_lines(lines: list[str]) -> list[bool]:
-    """Check which lines are inside Lean comment blocks (/- ... -/)."""
+    """Check which lines are inside Lean comment blocks (/- ... -/).
+
+    Limitation: only detects /- that starts a line (after stripping). Mid-line
+    block comment openings are silently ignored, so multi-line comments that
+    begin in the middle of a line will not be stripped. Closing lines (-/) are
+    also marked as commented, so any code after -/ on the same line is lost.
+    Both are acceptable given Lean headers always place /- at line starts.
+    """
     in_comment = False
     result = []
 

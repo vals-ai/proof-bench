@@ -6,18 +6,17 @@ This document contains the engineering and environment setup details for working
 
 ```bash
 curl -LsSf https://astral.sh/uv/install.sh | sh
-uv venv
+make install
 source .venv/bin/activate
-uv pip install -e ".[llm]"
 ```
 
-For development without LLM integrations:
+Create a `.env` file with your API keys:
 
 ```bash
-uv pip install -e .
+OPENAI_API_KEY='sk-...'
+ANTHROPIC_API_KEY='sk-ant-...'
+# add other provider keys as needed
 ```
-
-`[llm]` includes the public `model-library` dependency for model access.
 
 ## Lean 4
 
@@ -77,11 +76,10 @@ Install it with:
 uv tool install lean-lsp-mcp
 ```
 
-Run with Loogle enabled:
+Loogle is enabled by default. Use `--no-loogle` to turn it off. For local search:
 
 ```bash
-python main.py --dataset exported --model openai/gpt-4o --k 3 \
-  --enable-loogle --loogle-local
+python main.py --dataset exported --model openai/gpt-4o --k 3 --loogle-local
 ```
 
 Modes:
@@ -142,7 +140,7 @@ python -m proof_bench.loogle_daemon --port 8765
 
 # Terminal 2+
 export LOOGLE_DAEMON_URL=http://127.0.0.1:8765
-python main.py --dataset exported --model openai/gpt-4o --k 8 --enable-loogle
+python main.py --dataset exported --model openai/gpt-4o --k 8
 ```
 
 Programmatic config:
@@ -157,12 +155,9 @@ loogle_config = {
 ## Development
 
 ```bash
-pre-commit install
-pre-commit run --all-files
-ruff check .
-ruff format .
+make style
+make test
 lake build
-pytest tests/
 ```
 
 ## Upgrading Lean Or Mathlib

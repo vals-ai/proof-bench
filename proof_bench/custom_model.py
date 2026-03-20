@@ -5,14 +5,13 @@ from __future__ import annotations
 import json
 import logging
 import os
-import shutil
-import time
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 from vals.sdk.types import OutputObject
 
+from proof_bench.mcp_client import resolve_stdio_command
 from proof_bench.service import ProofBenchService
 
 logger = logging.getLogger(__name__)
@@ -34,23 +33,13 @@ def _env_enabled(name: str) -> bool:
     return os.getenv(name, "").strip().lower() in {"1", "true", "yes", "on"}
 
 
-def _resolve_stdio_command() -> list[str]:
-    if uvx := shutil.which("uvx"):
-        return [uvx, "lean-lsp-mcp", "--transport", "stdio"]
-    if python3 := shutil.which("python3"):
-        return [python3, "-m", "lean_lsp_mcp", "--transport", "stdio"]
-    if python := shutil.which("python"):
-        return [python, "-m", "lean_lsp_mcp", "--transport", "stdio"]
-    raise RuntimeError("Could not find uvx/python3/python to launch lean-lsp-mcp")
-
-
 def _make_tool_config() -> dict:
     global _LOOGLE_DEFAULT_WARNING_EMITTED
 
     config: dict[str, Any] = {
         "transport": "stdio",
         "project_path": str(_PROOF_BENCH_ROOT),
-        "stdio_command": _resolve_stdio_command(),
+        "stdio_command": resolve_stdio_command(),
     }
     if daemon_url := os.getenv("LOOGLE_DAEMON_URL"):
         config["loogle_daemon_url"] = daemon_url
@@ -126,48 +115,48 @@ async def get_custom_model(model_name: str, parameters: dict, *args, **kwargs):
         if isinstance(log_dir, str):
             log_dir = Path(log_dir).expanduser()
 
-        start = time.perf_counter()
-        try:
-            result = await service.solve_problem(
-                problem_id=config["problem_id"],
-                dataset=config["dataset"],
-                model=config["model"],
-                k=config["k"],
-                include_nl_proof=config["include_nl_proof"],
-                log_dir=log_dir,
-                loogle_config=config.get("loogle_config"),
-                run_code_config=config.get("run_code_config"),
-                max_turns=config["max_turns"],
-            )
-        except Exception as exc:
-            logger.exception("Proof Bench run failed: %s", exc)
-            return {"llm_output": "ERROR", "output_context": {"error": str(exc)}}
-
-        duration = time.perf_counter() - start
-        return OutputObject(
-            llm_output="true" if result.pass_at_k else "false",
-            in_tokens=result.total_input_tokens,
-            out_tokens=result.total_output_tokens,
-            duration=duration,
-            cost=result.total_cost,
-            output_context={
-                "problem_id": result.id,
-                "pass_at_k": result.pass_at_k,
-                "attempts": result.attempts,
-                "successful_attempts": result.successful_attempts,
-                "total_attempts": result.total_attempts,
-                "query_metadata": {
-                    "cost": {"total": result.total_cost},
-                    **result.token_usage,
-                },
-                "config": {
-                    "dataset": config["dataset"],
-                    "include_nl_proof": config["include_nl_proof"],
-                    "max_turns": config["max_turns"],
-                    "k": config["k"],
-                    "model": config["model"],
-                },
-            },
+        result = await service.solve_problem(
+            problem_id=config["problem_id"],
+            dataset=config["dataset"],
+            model=config["model"],
+            k=config["k"],
+            include_nl_proof=config["include_nl_proof"],
+            log_dir=log_dir,
+            loogle_config=config.get("loogle_config"),
+            run_code_config=config.get("run_code_config"),
+            max_turns=config["max_turns"],
         )
+
+        if not result.agent_results:
+            return OutputObject(
+                llm_output="false",
+                output_context={
+                    "problem_id": result.id,
+                    "pass_at_k": False,
+                    "attempts": result.attempts,
+                    "error": "all attempts failed without producing an AgentResult",
+                },
+            )
+
+        agent_result = result.agent_results[-1]
+        output_context = {
+            **agent_result.model_dump(),
+            "output_dir": str(agent_result.output_dir),
+            "problem_id": result.id,
+            "pass_at_k": result.pass_at_k,
+            "attempts": result.attempts,
+            "successful_attempts": result.successful_attempts,
+            "total_attempts": result.total_attempts,
+            "config": {
+                "dataset": config["dataset"],
+                "include_nl_proof": config["include_nl_proof"],
+                "max_turns": config["max_turns"],
+                "k": config["k"],
+                "model": config["model"],
+            },
+        }
+        output = OutputObject.from_agent_result(agent_result, output_context=output_context)
+        output.llm_output = "true" if result.pass_at_k else "false"
+        return output
 
     return custom_call

@@ -10,9 +10,12 @@ Workers query via HTTP. Requests serialize through asyncio.Lock.
 import argparse
 import asyncio
 import json
+import logging
 import signal
 import sys
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 CACHE_DIR = Path.home() / ".cache" / "lean-lsp-mcp" / "loogle"
 
@@ -54,7 +57,7 @@ class LoogleProcess:
         try:
             line = await asyncio.wait_for(self.proc.stdout.readline(), timeout=120)
             if b"Loogle is ready" in line:
-                print("[INFO] Loogle subprocess started")
+                logger.info("Loogle subprocess started")
                 return None
             return f"Unexpected startup: {line.decode()[:100]}"
         except TimeoutError:
@@ -69,9 +72,9 @@ class LoogleProcess:
         async with self.lock:
             if not self.proc or self.proc.returncode is not None:
                 if self.proc and self.proc.returncode is not None:
-                    print(f"[WARN] Loogle process died (code {self.proc.returncode}), restarting...")
+                    logger.warning("Loogle process died (code %d), restarting...", self.proc.returncode)
                 else:
-                    print("[WARN] Loogle process not running, starting...")
+                    logger.warning("Loogle process not running, starting...")
 
                 err = await self._start_subprocess()
                 if err:
@@ -79,7 +82,7 @@ class LoogleProcess:
 
             try:
                 query_bytes = f"{q}\n".encode()
-                print(f"[DEBUG] Query: {repr(q)[:100]}")
+                logger.debug("Query: %s", repr(q)[:100])
                 self.proc.stdin.write(query_bytes)
                 await self.proc.stdin.drain()
 
@@ -87,29 +90,29 @@ class LoogleProcess:
                 line_str = line.decode().strip()
 
                 if not line_str:
-                    print("[WARN] Empty response from loogle")
+                    logger.warning("Empty response from loogle")
                     try:
                         stderr = await asyncio.wait_for(self.proc.stderr.read(1000), timeout=0.5)
                         if stderr:
-                            print(f"[DEBUG] stderr: {stderr.decode()[:200]}")
+                            logger.debug("stderr: %s", stderr.decode()[:200])
                     except TimeoutError:
                         pass
                     return {"error": "Empty response from loogle"}
 
                 data = json.loads(line_str)
-                print(f"[DEBUG] Got response with {len(data.get('hits', []))} hits")
+                logger.debug("Got response with %d hits", len(data.get("hits", [])))
 
             except TimeoutError:
                 return {"error": "Query timeout"}
             except json.JSONDecodeError as e:
-                print(f"[ERROR] JSON decode failed: {e}, raw: {line_str[:200]}")
+                logger.error("JSON decode failed: %s, raw: %s", e, line_str[:200])
                 return {"error": f"Invalid response: {e}"}
             except (BrokenPipeError, ConnectionResetError, ConnectionError) as e:
-                print(f"[ERROR] Connection to loogle lost: {e}")
+                logger.error("Connection to loogle lost: %s", e)
                 self.proc = None
                 return {"error": f"Loogle subprocess died: {e}"}
             except Exception as e:
-                print(f"[ERROR] Query failed: {e}")
+                logger.error("Query failed: %s", e)
                 return {"error": str(e)}
 
             if err := data.get("error"):
@@ -182,7 +185,7 @@ class Server:
                 try:
                     params = json.loads(body_str) if body_str.strip() else {}
                 except json.JSONDecodeError as e:
-                    print(f"[ERROR] JSON parse failed: {e}, body={body_str[:200]!r}")
+                    logger.error("JSON parse failed: %s, body=%r", e, body_str[:200])
                     params = {}
                 result = await self.loogle.query(
                     params.get("query", ""),
@@ -211,9 +214,9 @@ class Server:
     async def run(self):
         """Start server and wait for shutdown signal."""
         self.server = await asyncio.start_server(self.handle, self.host, self.port)
-        print(f"Listening on {self.host}:{self.port}")
+        logger.info("Listening on %s:%d", self.host, self.port)
 
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         stop = asyncio.Event()
         for sig in (signal.SIGINT, signal.SIGTERM):
             loop.add_signal_handler(sig, stop.set)
@@ -221,23 +224,24 @@ class Server:
         async with self.server:
             await stop.wait()
 
-        print("\nShutting down...")
+        logger.info("Shutting down")
         await self.loogle.stop()
 
 
 async def main(host: str, port: int):
     loogle = LoogleProcess()
-    print("Starting loogle...")
+    logger.info("Starting loogle...")
 
     if err := await loogle.start():
-        print(f"Error: {err}", file=sys.stderr)
+        logger.error("Failed to start: %s", err)
         sys.exit(1)
 
-    print("Loogle ready")
+    logger.info("Loogle ready")
     await Server(loogle, host, port).run()
 
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
     parser = argparse.ArgumentParser(description="Shared loogle HTTP daemon")
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8765)
