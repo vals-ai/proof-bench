@@ -4,12 +4,11 @@ version = "0.1.0"
 requires-python = ">=3.11"
 dependencies = [
     "mcp>=1.21.2",
-    "model-library @ file:///home/orestes/Vals/platform/backend/model-proxy/",
+    "model-library==0.1.20",
     "python-dotenv>=1.0",
-    "ruff>=0.15.7",
 ]
 
-[project.optional-dependencies]
+[dependency-groups]
 dev = [
     "pytest",
     "ruff",

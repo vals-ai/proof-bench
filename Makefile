@@ -8,6 +8,7 @@ help:
 	@echo "  make test       Run unit tests"
 
 install:
+	uv venv --python 3.11
 	uv sync --dev
 
 venv_check:
