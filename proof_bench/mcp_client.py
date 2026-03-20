@@ -19,14 +19,16 @@ logger = logging.getLogger(__name__)
 
 
 class _SuppressLSPCleanupFilter(logging.Filter):
-    """Drop noisy LSP file-worker termination messages from the mcp logger."""
+    """Drop noisy LSP file-worker termination messages."""
 
     def filter(self, record: logging.LogRecord) -> bool:
         msg = record.getMessage().lower()
         return not ("the file worker for" in msg and "has been terminated" in msg)
 
 
-logging.getLogger("mcp").addFilter(_SuppressLSPCleanupFilter())
+_lsp_filter = _SuppressLSPCleanupFilter()
+logging.getLogger("mcp").addFilter(_lsp_filter)
+logging.getLogger("asyncio").addFilter(_lsp_filter)
 
 MAX_TIMEOUT = 90
 BOOTSTRAP_TIMEOUT_SECONDS = 600
@@ -286,12 +288,10 @@ class StdioMCPClient:
             result = await self._session.call_tool(name=name, arguments=arguments)
 
             if result.isError:
-                return json.dumps(
-                    {
-                        "error": getattr(result, "message", "Unknown MCP error"),
-                        "content": [c.model_dump() for c in getattr(result, "content", [])],
-                    }
-                )
+                error_text = " ".join(
+                    getattr(c, "text", "") for c in getattr(result, "content", [])
+                ).strip() or "Unknown MCP error"
+                return json.dumps({"error": error_text})
 
             chunks = []
             for item in result.content:
