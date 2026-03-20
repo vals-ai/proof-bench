@@ -248,13 +248,6 @@ def run_proving_pipeline(
         end_time = datetime.now()
         summary = aggregate_results(results, start_time, end_time)
 
-        if log_dir:
-            import json
-
-            summary_file = log_dir / "aggregated_results.json"
-            with open(summary_file, "w", encoding="utf-8") as f:
-                json.dump(summary, f, indent=2)
-
         return results, summary
     finally:
         if loop:

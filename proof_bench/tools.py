@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import os
 from typing import Any
@@ -79,7 +80,12 @@ class LoogleTool(Tool):
             logger.debug("Rate limiting: sleeping 15s (remote loogle)")
             await asyncio.sleep(15)
 
-        return ToolOutput(output=result)
+        try:
+            error = json.loads(result).get("error")
+        except (json.JSONDecodeError, AttributeError):
+            error = None
+
+        return ToolOutput(output=result, error=error)
 
 
 class RunCodeTool(Tool):

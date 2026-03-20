@@ -9,20 +9,13 @@ from dotenv import load_dotenv
 
 from proof_bench.load_problems import load_exported_problems
 from proof_bench.mcp_client import resolve_stdio_command
-from proof_bench.prover import run_proving_pipeline
+from proof_bench.prover import ProblemResult, run_proving_pipeline
 from proof_bench.tools import ToolConfig
 
 DEFAULT_LOOGLE_TRANSPORT = "stdio"
 DEFAULT_LOOGLE_MAX_RESULTS = 8
 VALID_DATASETS = {"exported"}
-
-
-def _make_log_dir(args: argparse.Namespace) -> Path:
-    base_log_dir = Path(__file__).parent / "data" / "logs"
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    log_dir = base_log_dir / timestamp
-    log_dir.mkdir(parents=True, exist_ok=True)
-    return log_dir
+BASE_LOG_DIR = Path(__file__).parent / "data" / "logs"
 
 
 def validate_args(args: argparse.Namespace) -> None:
@@ -81,7 +74,22 @@ def filter_dataset(
     return dataset, "all"
 
 
-def write_metadata(args: argparse.Namespace, log_dir: Path, problem_scope: str, dataset_size: int) -> None:
+def _resolve_run_dir(results: list[ProblemResult]) -> Path:
+    """Return the agent's run directory, falling back to BASE_LOG_DIR."""
+    for r in results:
+        if r.agent_results:
+            return r.agent_results[0].output_dir.parent
+    return BASE_LOG_DIR
+
+
+def write_results(
+    args: argparse.Namespace,
+    run_dir: Path,
+    problem_scope: str,
+    dataset_size: int,
+    summary: dict[str, Any],
+) -> None:
+    run_dir.mkdir(parents=True, exist_ok=True)
     metadata = {
         "timestamp": datetime.now().isoformat(),
         "dataset": args.dataset,
@@ -90,14 +98,14 @@ def write_metadata(args: argparse.Namespace, log_dir: Path, problem_scope: str, 
         "temperature": args.temperature,
         "include_nl_proof": args.include_nl_proof,
         "loogle_enabled": args.enable_loogle,
-        "loogle_transport": "stdio" if args.enable_loogle else None,
-        "loogle_max_results": DEFAULT_LOOGLE_MAX_RESULTS if args.enable_loogle else None,
         "problem_scope": problem_scope,
         "domains": getattr(args, "domains", None),
         "total_problems": dataset_size,
     }
-    with open(log_dir / "metadata.json", "w", encoding="utf-8") as f:
+    with open(run_dir / "metadata.json", "w", encoding="utf-8") as f:
         json.dump(metadata, f, indent=2)
+    with open(run_dir / "aggregated_results.json", "w", encoding="utf-8") as f:
+        json.dump(summary, f, indent=2)
 
 
 def build_tool_configs(args: argparse.Namespace) -> tuple[ToolConfig | None, ToolConfig]:
@@ -133,7 +141,6 @@ def main() -> None:
     )
     parser.add_argument("--k", type=int, default=8)
     parser.add_argument("--temperature", type=float, default=0.7)
-    parser.add_argument("--log-file", type=str)
     parser.add_argument("--problem-id", type=str, help="Run only the problem with this specific ID")
     parser.add_argument(
         "--domains",
@@ -173,25 +180,25 @@ def main() -> None:
     if input("Proceed? (Y/n): ").lower().strip() not in ("", "y", "yes"):
         return
 
-    log_dir = _make_log_dir(args)
-    write_metadata(args, log_dir, problem_scope, num_problems)
-    print(f"Logs: {log_dir}")
-
     loogle_config, run_code_config = build_tool_configs(args)
 
     try:
-        run_proving_pipeline(
+        results, summary = run_proving_pipeline(
             dataset,
             args.model,
             k=args.k,
             include_nl_proof=args.include_nl_proof,
             loogle_config=loogle_config,
             run_code_config=run_code_config,
-            log_dir=log_dir,
+            log_dir=BASE_LOG_DIR,
         )
     except Exception as e:
         print(f"error: proving pipeline failed: {e}", file=sys.stderr)
         sys.exit(1)
+
+    run_dir = _resolve_run_dir(results)
+    write_results(args, run_dir, problem_scope, num_problems, summary)
+    print(f"Logs: {run_dir}")
 
 
 if __name__ == "__main__":
