@@ -77,7 +77,7 @@ class LoogleTool(Tool):
 
         if not self._is_local:
             logger.debug("Rate limiting: sleeping 15s (remote loogle)")
-            await asyncio.sleep(5)
+            await asyncio.sleep(15)
 
         return ToolOutput(output=result)
 
