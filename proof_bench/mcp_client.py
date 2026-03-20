@@ -27,8 +27,8 @@ class _SuppressLSPCleanupFilter(logging.Filter):
 
 
 _lsp_filter = _SuppressLSPCleanupFilter()
-logging.getLogger("mcp").addFilter(_lsp_filter)
-logging.getLogger("asyncio").addFilter(_lsp_filter)
+for _ln in ("mcp", "asyncio", "asyncio.base_events", "asyncio.futures"):
+    logging.getLogger(_ln).addFilter(_lsp_filter)
 
 MAX_TIMEOUT = 90
 BOOTSTRAP_TIMEOUT_SECONDS = 600
@@ -213,7 +213,12 @@ def _suppress_mcp_cleanup_errors(loop, context):
 
 
 def _install_error_handler():
-    """Install asyncio exception handler to suppress MCP cleanup noise."""
+    """Install asyncio exception handler and log filters to suppress MCP cleanup noise."""
+    # Add filter to all root handlers (catches anything that propagates up)
+    for handler in logging.root.handlers:
+        if _lsp_filter not in handler.filters:
+            handler.addFilter(_lsp_filter)
+
     try:
         loop = asyncio.get_running_loop()
     except RuntimeError:
