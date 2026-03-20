@@ -21,7 +21,7 @@ from model_library.agent import (
     TurnResult,
 )
 from model_library.base import TextInput
-from model_library.base.input import InputItem, RawResponse, ToolDefinition
+from model_library.base.input import InputItem, RawResponse, SystemInput, ToolDefinition
 from model_library.registry_utils import get_registry_model
 
 from .tools import LoogleTool, RunCodeTool, SubmitProofTool, ToolConfig
@@ -139,7 +139,7 @@ async def run_agent(
 
     input_items: list[InputItem] = []
     if system_prompt:
-        input_items.append(TextInput(text=system_prompt))
+        input_items.append(SystemInput(text=system_prompt))
     input_items.append(TextInput(text=query_text))
 
     agent = Agent(

@@ -49,7 +49,14 @@ def _strip_leading_empty_lines(lines: list[str]) -> list[str]:
 
 
 def _detect_commented_lines(lines: list[str]) -> list[bool]:
-    """Check which lines are inside Lean comment blocks (/- ... -/)."""
+    """Check which lines are inside Lean comment blocks (/- ... -/).
+
+    Limitation: only detects /- that starts a line (after stripping). Mid-line
+    block comment openings are silently ignored, so multi-line comments that
+    begin in the middle of a line will not be stripped. Closing lines (-/) are
+    also marked as commented, so any code after -/ on the same line is lost.
+    Both are acceptable given Lean headers always place /- at line starts.
+    """
     in_comment = False
     result = []
 

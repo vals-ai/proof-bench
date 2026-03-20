@@ -50,6 +50,7 @@ class ProofBenchService:
             self._get_exported_dataset("exported")  # ensure loaded
             return self._exported_problem_index.get(problem_id)
 
+        # Alias datasets are small and rarely used; linear scan is fine here.
         problems = self._load_dataset(dataset)
         return next((p for p in problems if p["id"] == problem_id), None)
 
