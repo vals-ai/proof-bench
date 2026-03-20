@@ -10,6 +10,14 @@ make install
 source .venv/bin/activate
 ```
 
+Create a `.env` file with your API keys:
+
+```bash
+OPENAI_API_KEY='sk-...'
+ANTHROPIC_API_KEY='sk-ant-...'
+# add other provider keys as needed
+```
+
 ## Lean 4
 
 ```bash

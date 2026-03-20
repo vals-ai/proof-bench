@@ -8,8 +8,7 @@ help:
 	@echo "  make test       Run unit tests"
 
 install:
-	uv venv
-	uv pip install -e ".[dev]"
+	uv sync --dev
 
 venv_check:
 	@if [ ! -f .venv/bin/activate ]; then \

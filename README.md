@@ -26,9 +26,10 @@ Setup, local Loogle configuration, development commands, and platform run instru
 
 ## Quick Start
 
-After following `SETUP.md`, a basic run looks like:
+After following `SETUP.md`, export the dataset then run:
 
 ```bash
+python proof_bench/validate_and_export.py
 python main.py --dataset exported --model openai/gpt-4o --k 3
 ```
 

@@ -17,6 +17,17 @@ from mcp.client.stdio import StdioServerParameters, stdio_client
 
 logger = logging.getLogger(__name__)
 
+
+class _SuppressLSPCleanupFilter(logging.Filter):
+    """Drop noisy LSP file-worker termination messages from the mcp logger."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        msg = record.getMessage().lower()
+        return not ("the file worker for" in msg and "has been terminated" in msg)
+
+
+logging.getLogger("mcp").addFilter(_SuppressLSPCleanupFilter())
+
 MAX_TIMEOUT = 90
 BOOTSTRAP_TIMEOUT_SECONDS = 600
 MCP_INIT_ATTEMPTS = 3
@@ -189,8 +200,6 @@ def _suppress_mcp_cleanup_errors(loop, context):
         or "future exception was never retrieved" in text
         or "task exception was never retrieved" in text
         or "unhandled errors in a taskgroup" in text
-        or ("the file worker for" in text and "has been terminated" in text)
-        or ("lsp error" in text and "terminated" in text)
     ):
         return
 
