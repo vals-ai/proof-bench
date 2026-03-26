@@ -18,14 +18,17 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 
 CACHE_DIR = Path.home() / ".cache" / "lean-lsp-mcp" / "loogle"
+DEFAULT_BINARY = CACHE_DIR / "repo" / ".lake" / "build" / "bin" / "loogle"
 
 
 class LoogleProcess:
     """Wraps loogle binary with serialized stdin/stdout communication."""
 
-    def __init__(self):
+    def __init__(self, binary: Path | None = None, index: Path | None = None):
         self.proc: asyncio.subprocess.Process | None = None
         self.lock = asyncio.Lock()
+        self._binary = binary
+        self._index = index
 
     async def start(self) -> str | None:
         """Start loogle subprocess. Returns error message or None on success."""
@@ -33,24 +36,27 @@ class LoogleProcess:
 
     async def _start_subprocess(self) -> str | None:
         """Internal: start or restart the loogle subprocess."""
-        binary = CACHE_DIR / "repo" / ".lake" / "build" / "bin" / "loogle"
+        binary = self._binary or DEFAULT_BINARY
         if not binary.exists():
             return f"Binary not found: {binary}"
 
-        indices = list((CACHE_DIR / "index").glob("*.idx"))
-        if not indices:
-            return f"No index in {CACHE_DIR / 'index'}"
+        if self._index is not None:
+            index = self._index
+        else:
+            indices = list((CACHE_DIR / "index").glob("*.idx"))
+            if not indices:
+                return f"No index in {CACHE_DIR / 'index'}"
+            index = indices[0]
 
         self.proc = await asyncio.create_subprocess_exec(
             str(binary),
             "--json",
             "--interactive",
             "--read-index",
-            str(indices[0]),
+            str(index),
             stdin=asyncio.subprocess.PIPE,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
-            cwd=CACHE_DIR / "repo",
             limit=1024 * 1024,
         )
 
@@ -228,8 +234,8 @@ class Server:
         await self.loogle.stop()
 
 
-async def main(host: str, port: int):
-    loogle = LoogleProcess()
+async def main(host: str, port: int, binary: Path | None = None, index: Path | None = None):
+    loogle = LoogleProcess(binary=binary, index=index)
     logger.info("Starting loogle...")
 
     if err := await loogle.start():
@@ -245,6 +251,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Shared loogle HTTP daemon")
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8765)
+    parser.add_argument("--binary", type=Path, default=None)
+    parser.add_argument("--index", type=Path, default=None)
     args = parser.parse_args()
 
-    asyncio.run(main(args.host, args.port))
+    asyncio.run(main(args.host, args.port, binary=args.binary, index=args.index))
