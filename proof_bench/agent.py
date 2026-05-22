@@ -66,9 +66,24 @@ def _should_stop(turn_result: TurnResult) -> bool:
     return False
 
 
+def _is_empty_raw_response(item: InputItem) -> bool:
+    if not isinstance(item, RawResponse):
+        return False
+    response = item.response
+    return (
+        getattr(response, "role", None) == "assistant"
+        and not getattr(response, "content", None)
+        and not getattr(response, "tool_calls", None)
+    )
+
+
 def _before_query(history: list[InputItem], last_error: Exception | None) -> list[InputItem]:
     if last_error:
         raise last_error
+    # Cohere rejects assistant history items with neither content nor tool calls.
+    # Some OpenAI-compatible responses can serialize that shape after an empty
+    # response, so drop those no-op turns before the next query.
+    history = [item for item in history if not _is_empty_raw_response(item)]
     # RawResponse is the model's raw response and is always appended to history.
     # If it's still the last item (no ToolResults following it), the model responded
     # with text only — inject a continuation prompt to keep the agent going.
