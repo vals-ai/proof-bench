@@ -130,7 +130,7 @@ def build_tool_configs(args: argparse.Namespace) -> tuple[ToolConfig | None, Too
 
 
 def main() -> None:
-    load_dotenv(override=False)
+    load_dotenv(override=True)
 
     parser = argparse.ArgumentParser(description="Proof Bench: Automated Theorem Proving Benchmark")
     parser.add_argument("--dataset", type=str, default="exported", choices=["exported"])
