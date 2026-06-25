@@ -110,10 +110,10 @@ async def get_custom_model(model_name: str, parameters: dict, *args, **kwargs):
 
     async def custom_call(
         test_input: str,
-        files: dict | None = None,
-        context: dict | None = None,
-        question_id: str | None = None,
-        run_id: str | None = None,
+        files: dict,
+        context: dict,
+        question_id: str,
+        run_id: str,
     ):
         _ = (files, context)
         config = _parse_test_input(test_input, model_name)
