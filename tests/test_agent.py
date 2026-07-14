@@ -1,9 +1,11 @@
+import asyncio
 from types import SimpleNamespace
 
 import pytest
 from model_library.base import TextInput
 from model_library.base.input import RawResponse
 
+import proof_bench.agent as agent_module
 from proof_bench.agent import _before_query, _is_empty_raw_response
 
 
@@ -49,3 +51,38 @@ def test_before_query_reraises_last_error():
 
     with pytest.raises(RuntimeError, match="boom"):
         _before_query([], last_error=error)
+
+
+def test_run_agent_loads_gateway_metadata_before_reading_capabilities(monkeypatch):
+    events = []
+
+    class FakeModel:
+        metadata_loaded = False
+
+        async def ensure_metadata_loaded(self):
+            events.append("metadata")
+            self.metadata_loaded = True
+
+        @property
+        def supports_tools(self):
+            events.append("supports_tools")
+            assert self.metadata_loaded
+            return True
+
+    class FakeAgent:
+        def __init__(self, **kwargs):
+            events.append("agent")
+
+        async def run(self, **kwargs):
+            events.append("run")
+            return "result"
+
+    model = FakeModel()
+    monkeypatch.setattr(agent_module, "get_registry_model", lambda model_str: model)
+    monkeypatch.setattr(agent_module, "Agent", FakeAgent)
+    monkeypatch.setattr(agent_module, "SubmitProofTool", lambda *args: object())
+
+    result = asyncio.run(agent_module.run_agent("openai/test", "prove it"))
+
+    assert result == "result"
+    assert events[:2] == ["metadata", "supports_tools"]
