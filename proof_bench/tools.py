@@ -197,5 +197,7 @@ class SubmitProofTool(Tool):
             return False, f"Lean error: {result_text[:500]}"
         if "unsolved goals" in result_lower:
             return False, f"Proof incomplete: {result_text[:500]}"
+        if "uses 'sorry'" in result_lower:
+            return False, f"Proof uses sorry/admit: {result_text[:500]}"
 
         return True, "Proof verified successfully"
