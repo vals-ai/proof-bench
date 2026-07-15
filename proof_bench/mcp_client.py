@@ -6,6 +6,7 @@ import asyncio
 import json
 import logging
 import os
+import re
 import shutil
 import time
 import weakref
@@ -548,5 +549,8 @@ async def run_lean_code(code: str, timeout: int, config: ToolConfig) -> str:
 
     if "sorry" in code.lower():
         result += "\n\nWARNING: Code contains 'sorry'. This is not a complete proof."
+
+    if re.search(r"\badmit\b", code.lower()):
+        result += "\n\nWARNING: Code contains 'admit'. This is not a complete proof."
 
     return result

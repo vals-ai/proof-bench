@@ -5,7 +5,7 @@ logger = logging.getLogger(__name__)
 
 
 def _strip_response_and_format_proof(text: str) -> str | None:
-    """Extract and clean Lean proof code from LLM response. Returns None if `axiom` or `local_instance` are detected."""
+    """Extract and clean Lean proof code from LLM response. Returns None if `axiom`, `local_instance`, or `admit` are detected."""
     if not text or not text.strip():
         return ""
 
@@ -24,8 +24,11 @@ def _strip_response_and_format_proof(text: str) -> str | None:
     if by_match:
         text = text[by_match.start() :]
 
-    if "axiom" in text or "local_instance" in text:
-        logger.info("WARNING: Detected an `axiom` in the code; the response is therefore marked invalid.")
+    if "axiom" in text or "local_instance" in text or re.search(r"\badmit\b", text):
+        logger.info(
+            "WARNING: Detected an `axiom`, `local_instance`, or `admit` in the code; "
+            "the response is therefore marked invalid."
+        )
         return None
 
     text = re.sub(r"^:=\s*", "", text).strip()

@@ -6,6 +6,7 @@ import asyncio
 import json
 import logging
 import os
+import re
 from typing import Any
 
 from model_library.agent import Tool, ToolOutput
@@ -180,6 +181,9 @@ class SubmitProofTool(Tool):
 
         if "sorry" in proof.lower():
             return False, "Proof contains 'sorry' - incomplete proof"
+
+        if re.search(r"\badmit\b", proof.lower()):
+            return False, "Proof contains 'admit' - incomplete proof"
 
         full_code = f"{header}\n\n{formal_clean}\n{proof}"
         try:
