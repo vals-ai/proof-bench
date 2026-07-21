@@ -1449,7 +1449,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "mcp", specifier = ">=1.21.2" },
-    { name = "model-library", specifier = ">=0.1.28" },
+    { name = "model-library", specifier = "==0.1.28" },
     { name = "python-dotenv", specifier = ">=1.0" },
 ]
 
