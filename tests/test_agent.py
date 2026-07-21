@@ -1,9 +1,11 @@
+import asyncio
 from types import SimpleNamespace
 
 import pytest
 from model_library.base import TextInput
 from model_library.base.input import RawResponse
 
+import proof_bench.agent as agent_module
 from proof_bench.agent import _before_query, _is_empty_raw_response
 
 
@@ -49,3 +51,35 @@ def test_before_query_reraises_last_error():
 
     with pytest.raises(RuntimeError, match="boom"):
         _before_query([], last_error=error)
+
+
+def test_run_agent_requests_non_scoring_atif_export(monkeypatch, tmp_path):
+    run_kwargs = {}
+    expected_result = object()
+
+    class FakeAgent:
+        def __init__(self, **kwargs):
+            pass
+
+        async def run(self, *args, **kwargs):
+            run_kwargs.update(kwargs)
+            return expected_result
+
+    monkeypatch.setattr(
+        agent_module,
+        "get_registry_model",
+        lambda model: SimpleNamespace(supports_tools=False),
+    )
+    monkeypatch.setattr(agent_module, "Agent", FakeAgent)
+
+    result = asyncio.run(
+        agent_module.run_agent(
+            "provider/model",
+            "prove this",
+            question_id="proof-1",
+            log_dir=tmp_path,
+        )
+    )
+
+    assert result is expected_result
+    assert run_kwargs["atif_export"] is True

@@ -169,4 +169,5 @@ async def run_agent(
     return await agent.run(
         input=input_items,
         question_id=question_id,
+        atif_export=True,
     )
