@@ -65,6 +65,8 @@ class ProofBenchService:
         loogle_config: dict | None = None,
         run_code_config: dict | None = None,
         max_turns: int = 40,
+        question_id: str | None = None,
+        run_id: str | None = None,
     ):
         """Solve a single problem and return the result."""
         from proof_bench.prover import _process_single_problem
@@ -84,4 +86,6 @@ class ProofBenchService:
             run_code_config,
             log_dir,
             max_turns,
+            question_id=question_id,
+            run_id=run_id,
         )

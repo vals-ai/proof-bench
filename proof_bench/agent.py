@@ -123,6 +123,7 @@ async def run_agent(
     problem_context: dict[str, str] | None = None,
     max_turns: int = 40,
     question_id: str = "proof",
+    run_id: str | None = None,
     log_dir: Path = Path("logs"),
 ) -> AgentResult:
     """Run the proof agent and return AgentResult."""
@@ -169,4 +170,5 @@ async def run_agent(
     return await agent.run(
         input=input_items,
         question_id=question_id,
+        run_id=run_id,
     )

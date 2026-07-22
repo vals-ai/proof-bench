@@ -121,6 +121,8 @@ async def _run_single_attempt(
     run_code_config: ToolConfig | None,
     max_turns: int = 40,
     log_dir: Path | None = None,
+    question_id: str | None = None,
+    run_id: str | None = None,
 ) -> ProofResult:
     """Run a single proof attempt for a problem."""
     system_prompt, user_prompt = build_prompt(
@@ -139,7 +141,8 @@ async def _run_single_attempt(
             run_code_config=run_code_config,
             problem_context={"header": item.get("header", ""), "formal": item.get("formal", "")},
             max_turns=max_turns,
-            question_id=item.get("id", "proof"),
+            question_id=question_id or item.get("id", "proof"),
+            run_id=run_id,
             log_dir=log_dir or Path("logs"),
         )
     except Exception as e:
@@ -181,6 +184,8 @@ async def _process_single_problem(
     run_code_config: ToolConfig | None,
     log_dir: Path | None,
     max_turns: int = 40,
+    question_id: str | None = None,
+    run_id: str | None = None,
 ) -> ProblemResult:
     """Process all attempts for a single problem."""
     try:
@@ -195,6 +200,8 @@ async def _process_single_problem(
                 run_code_config,
                 max_turns,
                 log_dir,
+                question_id=question_id,
+                run_id=run_id,
             )
             attempts.append(result)
             if result.is_valid:

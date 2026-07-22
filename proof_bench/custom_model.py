@@ -108,7 +108,14 @@ async def get_custom_model(model_name: str, parameters: dict, *args, **kwargs):
     """Factory function that returns a custom_call coroutine for the platform."""
     _ = (parameters, args, kwargs)
 
-    async def custom_call(test_input: str):
+    async def custom_call(
+        test_input: str,
+        files: dict,
+        context: dict,
+        question_id: str,
+        run_id: str,
+    ):
+        _ = (files, context)
         config = _parse_test_input(test_input, model_name)
         service = _get_service()
         log_dir = config.get("log_dir") or _get_log_dir(config["model"])
@@ -125,6 +132,8 @@ async def get_custom_model(model_name: str, parameters: dict, *args, **kwargs):
             loogle_config=config.get("loogle_config"),
             run_code_config=config.get("run_code_config"),
             max_turns=config["max_turns"],
+            question_id=question_id,
+            run_id=run_id,
         )
 
         if not result.agent_results:
