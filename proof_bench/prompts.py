@@ -20,7 +20,7 @@ Use valid, correct Lean 4 syntax; the tools may be helpful if in doubt. Key Lean
 - Use `ring` for ring axioms, `linarith` for linear arithmetic
 - Existential witnesses: `use 1, 2, 3` not `use [1, 2, 3]`
 - No indentation on tactics
-- In your final submission, never use `sorry` or `admit`, even in comments or in the last step.
+- Your submission must genuinely close every goal. Do not use `sorry`, `admit`, `axiom`, or `local_instance` (not even in comments or as a final step), and do not introduce new axioms or leave placeholder tactics. A proof that Lean accepts only with a `declaration uses 'sorry'` warning, or that relies on an added axiom, scores zero.
 """
 
 TOOL_GUIDANCE_TEMPLATE = """BUDGET: {max_turns} turns total. This is the total number of turns you have to submit your final Lean 4 proof for the theorem. Each turn allows UP TO 6 TOOL CALLS MAX (calls beyond 6 are dropped without warning).
