@@ -128,6 +128,27 @@ class RunCodeTool(Tool):
         return ToolOutput(output=result)
 
 
+def _statement_up_to_proof(formal: str) -> str:
+    """Return the theorem statement up to and including its proof-assignment `:=`.
+
+    The dataset's `formal` field is the full statement, ending at the `:=` that
+    introduces the proof body. Any earlier `:=` belong to the statement itself --
+    e.g. `let x := ...` bindings or named arguments like `(ᵜ := ℂ)` -- and must be
+    preserved. The previous implementation used `formal.split(":=")[0]`, which cut at
+    the FIRST `:=` and silently truncated every such statement into uncompilable Lean,
+    so those problems could never be graded as resolved regardless of the submission.
+    """
+    stmt = formal.strip()
+    # Drop a trailing bare `sorry`/`admit` proof body if the dataset included one
+    # (e.g. `... := sorry`, `... := by sorry`, `... := by admit`).
+    stmt = re.sub(r"(:=)\s*(?:by\s+)?(?:sorry|admit)\s*$", r"\1", stmt, flags=re.IGNORECASE).strip()
+    if stmt.endswith(":="):
+        return stmt
+    # Fallback: keep everything up to and including the LAST `:=` (never the first).
+    marker = stmt.rfind(":=")
+    return stmt[: marker + 2].rstrip() if marker != -1 else f"{stmt} :="
+
+
 class SubmitProofTool(Tool):
     """Proof submission and verification tool for model_library Agent."""
 
@@ -175,9 +196,7 @@ class SubmitProofTool(Tool):
         if not formal:
             return True, "Verification skipped (no formal statement)"
 
-        formal_clean = formal
-        if ":=" in formal_clean:
-            formal_clean = formal_clean.split(":=")[0].strip() + " :="
+        formal_clean = _statement_up_to_proof(formal)
 
         if "sorry" in proof.lower():
             return False, "Proof contains 'sorry' - incomplete proof"
