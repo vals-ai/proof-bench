@@ -220,6 +220,24 @@ by
     assert _strip_response_and_format_proof(input_proof_with_axiom) == expected
 
 
+def test_admit_in_proof():
+    """Test detection of `admit` in the proof."""
+    input_proof_with_admit = """
+by
+  admit
+"""
+    expected = None
+
+    assert _strip_response_and_format_proof(input_proof_with_admit) == expected
+
+
+def test_admit_as_substring_not_flagged():
+    """Identifiers merely containing 'admit' as a substring should not be flagged."""
+    input_text = "by\n  exact admittance_lemma"
+    expected = "by\n  exact admittance_lemma"
+    assert _strip_response_and_format_proof(input_text) == expected
+
+
 def test_local_instance_in_proof():
     """Test detection of `local_instance` in the proof."""
     input_proof_with_local_instance = """

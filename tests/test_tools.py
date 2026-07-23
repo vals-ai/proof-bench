@@ -82,6 +82,39 @@ class TestTimeoutNormalization:
         assert tools_module._normalize_timeout(9999) == tools_module.MAX_TIMEOUT
 
 
+class TestStatementUpToProof:
+    """`_verify` must reconstruct the statement WITHOUT truncating at an internal `:=`
+    (a `let ... :=` binding or a named arg like `(ᵜ := ℂ)`). Regression guard for the
+    old `formal.split(":=")[0]` behaviour, which made such problems ungradable."""
+
+    def test_simple_statement_unchanged(self):
+        formal = "theorem t : 1 + 1 = 2 :="
+        assert tools_module._statement_up_to_proof(formal) == "theorem t : 1 + 1 = 2 :="
+
+    def test_let_binding_not_truncated(self):
+        formal = "theorem t (h : f) :\n    let Y := Spec R\n    let H := Spec S;\n    P Y H :="
+        result = tools_module._statement_up_to_proof(formal)
+        assert result == formal
+        assert "let H := Spec S" in result
+        # the old split-based logic would have cut everything after the first `:=`
+        assert result != formal.split(":=")[0].strip() + " :="
+
+    def test_named_argument_not_truncated(self):
+        formal = "theorem t {X : Type*} [IsFiniteMeasure (volume (α := X))] : P :="
+        assert tools_module._statement_up_to_proof(formal) == formal
+
+    def test_trailing_sorry_stripped(self):
+        assert tools_module._statement_up_to_proof("theorem t : P := sorry") == "theorem t : P :="
+        assert tools_module._statement_up_to_proof("theorem t : P := by sorry") == "theorem t : P :="
+
+    def test_trailing_admit_stripped(self):
+        assert tools_module._statement_up_to_proof("theorem t : P := by admit") == "theorem t : P :="
+
+    def test_let_binding_with_trailing_sorry(self):
+        formal = "theorem t : let Y := X; Y = X := by sorry"
+        assert tools_module._statement_up_to_proof(formal) == "theorem t : let Y := X; Y = X :="
+
+
 class TestRunLeanCodeRecovery:
     def test_run_lean_code_retries_once_after_successful_recovery(self, monkeypatch):
         class DummyClient:
