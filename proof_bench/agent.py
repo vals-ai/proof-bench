@@ -124,8 +124,18 @@ async def run_agent(
     max_turns: int = 40,
     question_id: str = "proof",
     log_dir: Path = Path("logs"),
+    state: dict[str, Any] | None = None,
 ) -> AgentResult:
-    """Run the proof agent and return AgentResult."""
+    """Run the proof agent and return AgentResult.
+
+    Pass a `state` dict to receive the tool state back: the agent mutates it in
+    place, so after the run it holds `submit_proof`'s record of what was graded
+    (`proof_text`, `verified`, `verify_message`, `full_proof_code`). Callers that
+    record results should read `full_proof_code` from here rather than
+    re-assembling it, so the record is exactly the code the grader compiled.
+    `AgentResult` itself carries no state, which is why this is a mutable
+    out-parameter (matching `model_library`'s own `Agent.run` signature).
+    """
     model = get_registry_model(model_str)
 
     tools = []
@@ -170,4 +180,5 @@ async def run_agent(
         input=input_items,
         question_id=question_id,
         atif_export=True,
+        state=state,
     )
