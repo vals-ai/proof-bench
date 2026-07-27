@@ -103,8 +103,8 @@ class RunCodeTool(Tool):
         },
         "timeout": {
             "type": "number",
-            "description": "Timeout in seconds (cannot be more than 90 seconds).",
-            "maximum": 90,
+            "description": f"Timeout in seconds (cannot be more than {MAX_TIMEOUT} seconds).",
+            "maximum": MAX_TIMEOUT,
         },
     }
     required = ["code"]
@@ -149,6 +149,12 @@ def _statement_up_to_proof(formal: str) -> str:
     return stmt[: marker + 2].rstrip() if marker != -1 else f"{stmt} :="
 
 
+# The wall clock is the same cap `_normalize_timeout` already enforces on every Lean
+# run, so derive it rather than restating the number.
+VERIFICATION_TIMEOUT_SECONDS = MAX_TIMEOUT
+VERIFICATION_MAX_HEARTBEATS = 1_000_000
+
+
 def build_verification_code(header: str, formal: str, proof: str) -> str:
     """Assemble the full Lean file that is compiled to grade a submission.
 
@@ -157,8 +163,22 @@ def build_verification_code(header: str, formal: str, proof: str) -> str:
     `_statement_up_to_proof`), then the model's proof. Both the live grader
     (`SubmitProofTool._verify`) and the batch pipeline (`prover.py`) must build the
     code through this function so the graded code and the logged code cannot drift.
+
+    The heartbeat budget is emitted as a file-level command between header and
+    statement -- the only placement that governs elaboration of the whole submitted
+    declaration. `set_option ... in` inside a proof body cannot raise the
+    declaration-level budget, and submissions have no other way to change it, so the
+    budget is part of the benchmark definition: identical for every submission and
+    hardware-invariant. Lean's 200k default rejected correct proofs that finished
+    well inside the wall-clock limit. The wall clock
+    (`VERIFICATION_TIMEOUT_SECONDS`) remains the safety bound for work heartbeats do
+    not meter: kernel typechecking, imports, and LSP stalls.
     """
-    return f"{header}\n\n{_statement_up_to_proof(formal)}\n{proof}"
+    return (
+        f"{header}\n\n"
+        f"set_option maxHeartbeats {VERIFICATION_MAX_HEARTBEATS}\n\n"
+        f"{_statement_up_to_proof(formal)}\n{proof}"
+    )
 
 
 class SubmitProofTool(Tool):
@@ -169,7 +189,11 @@ class SubmitProofTool(Tool):
         "Submit your final Lean proof for verification. "
         "IMPORTANT: You MUST call this tool to have your proof graded. "
         "Work that is not submitted will NOT be evaluated. "
-        "You cannot continue working after calling this tool."
+        "You cannot continue working after calling this tool. "
+        f"Verification compiles header + statement + your proof with "
+        f"`set_option maxHeartbeats {VERIFICATION_MAX_HEARTBEATS}` (file-level) and a "
+        f"{VERIFICATION_TIMEOUT_SECONDS}-second wall-clock limit; `set_option` inside "
+        "your proof cannot change these budgets."
     )
     parameters = {
         "proof": {
@@ -221,7 +245,9 @@ class SubmitProofTool(Tool):
 
         full_code = build_verification_code(header, formal, proof)
         try:
-            result_text = await run_lean_code(full_code, timeout=90, config=self._run_code_config)
+            result_text = await run_lean_code(
+                full_code, timeout=VERIFICATION_TIMEOUT_SECONDS, config=self._run_code_config
+            )
         except Exception as e:
             logger.exception("Verification failed")
             return False, f"Verification error: {e}"

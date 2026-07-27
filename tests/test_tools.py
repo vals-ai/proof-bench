@@ -10,6 +10,7 @@ from tests.support import install_model_library_stub, reload_module
 
 install_model_library_stub()
 tools_module = reload_module("proof_bench.tools")
+prompts_module = reload_module("proof_bench.prompts")
 ToolConfig = tools_module.ToolConfig
 cleanup_mcp_client = tools_module.cleanup_mcp_client
 cleanup_mcp_clients = tools_module.cleanup_mcp_clients
@@ -119,9 +120,14 @@ class TestStatementUpToProof:
 class TestBuildVerificationCode:
     """Single source of truth for assembling gradeable Lean: header + statement + proof."""
 
+    @staticmethod
+    def _expected(body: str) -> str:
+        option = f"set_option maxHeartbeats {tools_module.VERIFICATION_MAX_HEARTBEATS}"
+        return f"import Mathlib\n\n{option}\n\n{body}"
+
     def test_orders_header_statement_proof(self):
         code = tools_module.build_verification_code("import Mathlib", "theorem t : True :=", "by trivial")
-        assert code == "import Mathlib\n\ntheorem t : True :=\nby trivial"
+        assert code == self._expected("theorem t : True :=\nby trivial")
 
     def test_preserves_let_binding_statement(self):
         formal = "theorem t : let Y := X; Y = X :="
@@ -131,7 +137,41 @@ class TestBuildVerificationCode:
 
     def test_strips_trailing_proof_body_from_formal(self):
         code = tools_module.build_verification_code("import Mathlib", "theorem t : True := sorry", "by trivial")
-        assert code == "import Mathlib\n\ntheorem t : True :=\nby trivial"
+        assert code == self._expected("theorem t : True :=\nby trivial")
+
+    def test_heartbeat_budget_is_file_level_before_statement(self):
+        """`set_option ... in` inside a proof cannot raise the declaration-level budget,
+        so the option must sit after the header and before the statement."""
+        code = tools_module.build_verification_code("import Mathlib", "theorem t : P :=", "by trivial")
+        option_pos = code.index(f"set_option maxHeartbeats {tools_module.VERIFICATION_MAX_HEARTBEATS}")
+        assert code.index("import Mathlib") < option_pos < code.index("theorem t : P :=")
+
+
+class TestPromptDisclosesGradingBudget:
+    """The prompt must quote the budget the grader actually enforces. Writing the
+    numbers out by hand let the two drift, which would tell the model the wrong budget
+    -- the exact failure this rule exists to prevent."""
+
+    def _budget_line(self) -> str:
+        return next(
+            line for line in prompts_module.SYSTEM_PROMPT.splitlines() if line.startswith("- Verification budget")
+        )
+
+    def test_budget_line_matches_grader_constants(self):
+        line = self._budget_line()
+        assert f"maxHeartbeats {tools_module.VERIFICATION_MAX_HEARTBEATS}" in line
+        assert f"{tools_module.VERIFICATION_TIMEOUT_SECONDS}-second" in line
+
+    def test_prompt_contains_no_unrendered_placeholders(self):
+        """SYSTEM_PROMPT is sent verbatim -- it is never `.format()`ed -- so a `{...}`
+        placeholder would reach the model as literal text."""
+        assert "{" not in prompts_module.SYSTEM_PROMPT
+        assert "}" not in prompts_module.SYSTEM_PROMPT
+
+    def test_run_code_timeout_schema_matches_cap(self):
+        schema = tools_module.RunCodeTool.parameters["timeout"]
+        assert schema["maximum"] == tools_module.MAX_TIMEOUT
+        assert f"{tools_module.MAX_TIMEOUT} seconds" in schema["description"]
 
 
 def test_verify_rejects_admit_without_compiling():

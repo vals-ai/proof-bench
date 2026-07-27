@@ -1,6 +1,24 @@
 from typing import Any
 
-SYSTEM_PROMPT = """You are a Lean 4 theorem proving expert and an expert in graduate level mathematics.
+from .tools import VERIFICATION_MAX_HEARTBEATS, VERIFICATION_TIMEOUT_SECONDS
+
+# Interpolated from the grader's own constants so the budget the model is told always
+# matches the budget it is graded under; restating the numbers here would let the two
+# drift, which is the exact failure this rule exists to prevent. Kept as a separate
+# concatenated f-string rather than making SYSTEM_PROMPT an f-string, because that
+# block is sent verbatim and any future `{`/`}` in prompt text would then have to be
+# escaped.
+_VERIFICATION_BUDGET_RULE = (
+    f"- Verification budget: your submitted proof is compiled with "
+    f"`set_option maxHeartbeats {VERIFICATION_MAX_HEARTBEATS}` (file-level) and a "
+    f"{VERIFICATION_TIMEOUT_SECONDS}-second wall-clock limit. `set_option` inside your proof "
+    f"cannot change these budgets. To test under grading conditions, put "
+    f"`set_option maxHeartbeats {VERIFICATION_MAX_HEARTBEATS}` at file level (after the imports) "
+    f"in your lean_run_code checks."
+)
+
+SYSTEM_PROMPT = (
+    """You are a Lean 4 theorem proving expert and an expert in graduate level mathematics.
 
 You will be given a graduate level mathematics theorem statement and its Lean 4 formalization. You must output
 the Lean 4 proof (your output must only have the final proof; just the part starting with `by`).
@@ -22,6 +40,9 @@ Use valid, correct Lean 4 syntax; the tools may be helpful if in doubt. Key Lean
 - No indentation on tactics
 - Your submission must genuinely close every goal. Do not use `sorry`, `admit`, `axiom`, or `local_instance` (not even in comments or as a final step), and do not introduce new axioms or leave placeholder tactics. A proof that Lean accepts only with a `declaration uses 'sorry'` warning, or that relies on an added axiom, scores zero.
 """
+    + _VERIFICATION_BUDGET_RULE
+    + "\n"
+)
 
 TOOL_GUIDANCE_TEMPLATE = """BUDGET: {max_turns} turns total. This is the total number of turns you have to submit your final Lean 4 proof for the theorem. Each turn allows UP TO 6 TOOL CALLS MAX (calls beyond 6 are dropped without warning).
 
