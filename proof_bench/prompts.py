@@ -17,7 +17,8 @@ _VERIFICATION_BUDGET_RULE = (
     f"in your lean_run_code checks."
 )
 
-SYSTEM_PROMPT = """You are a Lean 4 theorem proving expert and an expert in graduate level mathematics.
+SYSTEM_PROMPT = (
+    """You are a Lean 4 theorem proving expert and an expert in graduate level mathematics.
 
 You will be given a graduate level mathematics theorem statement and its Lean 4 formalization. You must output
 the Lean 4 proof (your output must only have the final proof; just the part starting with `by`).
@@ -38,7 +39,10 @@ Use valid, correct Lean 4 syntax; the tools may be helpful if in doubt. Key Lean
 - Existential witnesses: `use 1, 2, 3` not `use [1, 2, 3]`
 - No indentation on tactics
 - Your submission must genuinely close every goal. Do not use `sorry`, `admit`, `axiom`, or `local_instance` (not even in comments or as a final step), and do not introduce new axioms or leave placeholder tactics. A proof that Lean accepts only with a `declaration uses 'sorry'` warning, or that relies on an added axiom, scores zero.
-""" + _VERIFICATION_BUDGET_RULE + "\n"
+"""
+    + _VERIFICATION_BUDGET_RULE
+    + "\n"
+)
 
 TOOL_GUIDANCE_TEMPLATE = """BUDGET: {max_turns} turns total. This is the total number of turns you have to submit your final Lean 4 proof for the theorem. Each turn allows UP TO 6 TOOL CALLS MAX (calls beyond 6 are dropped without warning).
 
