@@ -202,10 +202,15 @@ That's it!"""
     assert _strip_response_and_format_proof(input_text) == expected
 
 
-def test_axiom_in_proof():
-    """Test whether the stripping function is able to successfully detect `axiom`s in the proof"""
+class TestExtractionDoesNotJudgeValidity:
+    """Extraction is extraction: cheat attempts are passed through unchanged and
+    rejected by the grader (`SubmitProofTool._verify`), which is the single verdict
+    path. These used to return None from a substring scan -- a second, weaker
+    verdict that flagged innocent identifiers and missed escapes only visible in
+    Lean's output (e.g. `native_decide`'s `Lean.ofReduceBool`)."""
 
-    input_proof_with_axiom = """
+    def test_axiom_in_proof_is_extracted_not_rejected(self):
+        input_proof_with_axiom = """
 by
   -- Declare a “local axiom” inside the proof
   have absurd_axiom : False := by
@@ -213,22 +218,24 @@ by
 
   exact False.elim absurd_axiom
 """
+        result = _strip_response_and_format_proof(input_proof_with_axiom)
+        assert result is not None
+        assert result.startswith("by")
+        assert "axiom" in result
 
-    # we'd expect it to return None
-    expected = None
+    def test_admit_in_proof_is_extracted_not_rejected(self):
+        assert _strip_response_and_format_proof("\nby\n  admit\n") == "by\n  admit"
 
-    assert _strip_response_and_format_proof(input_proof_with_axiom) == expected
-
-
-def test_admit_in_proof():
-    """Test detection of `admit` in the proof."""
-    input_proof_with_admit = """
+    def test_local_instance_in_proof_is_extracted_not_rejected(self):
+        input_proof_with_local_instance = """
 by
-  admit
+  local_instance : Inhabited Nat := ⟨0⟩
+  have h : Nat := default
+  exact h
 """
-    expected = None
-
-    assert _strip_response_and_format_proof(input_proof_with_admit) == expected
+        result = _strip_response_and_format_proof(input_proof_with_local_instance)
+        assert result is not None
+        assert "local_instance" in result
 
 
 def test_admit_as_substring_not_flagged():
@@ -238,14 +245,8 @@ def test_admit_as_substring_not_flagged():
     assert _strip_response_and_format_proof(input_text) == expected
 
 
-def test_local_instance_in_proof():
-    """Test detection of `local_instance` in the proof."""
-    input_proof_with_local_instance = """
-by
-  local_instance : Inhabited Nat := ⟨0⟩
-  have h : Nat := default
-  exact h
-"""
-    expected = None
-
-    assert _strip_response_and_format_proof(input_proof_with_local_instance) == expected
+def test_identifier_containing_axiom_not_mangled():
+    """A legitimate identifier containing 'axiom' must survive extraction --
+    the old substring gate rejected the whole submission for this."""
+    input_text = "by\n  exact ring_axioms_apply h"
+    assert _strip_response_and_format_proof(input_text) == "by\n  exact ring_axioms_apply h"

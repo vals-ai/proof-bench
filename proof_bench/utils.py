@@ -4,8 +4,18 @@ import re
 logger = logging.getLogger(__name__)
 
 
-def _strip_response_and_format_proof(text: str) -> str | None:
-    """Extract and clean Lean proof code from LLM response. Returns None if `axiom`, `local_instance`, or `admit` are detected."""
+def _strip_response_and_format_proof(text: str) -> str:
+    """Extract and clean Lean proof code from an LLM response.
+
+    Extraction only -- it does not judge validity. Rejecting `sorry`/`admit`, added
+    axioms (including `native_decide`'s `Lean.ofReduceBool`), and code that simply
+    does not compile is the grader's job in `SubmitProofTool._verify`, which is the
+    single source of the verdict. This function used to return None when it spotted
+    `axiom`/`local_instance`/`admit` by substring, which meant a second, weaker
+    verdict path that could disagree with the compiler in both directions: it
+    flagged innocent text (any identifier containing "axiom") and could not see the
+    escapes that only show up in Lean's output.
+    """
     if not text or not text.strip():
         return ""
 
@@ -23,13 +33,6 @@ def _strip_response_and_format_proof(text: str) -> str | None:
     by_match = re.search(r"(?:(?<=\s)by(?=\s|$)|^by(?=\s|$))", text)
     if by_match:
         text = text[by_match.start() :]
-
-    if "axiom" in text or "local_instance" in text or re.search(r"\badmit\b", text):
-        logger.info(
-            "WARNING: Detected an `axiom`, `local_instance`, or `admit` in the code; "
-            "the response is therefore marked invalid."
-        )
-        return None
 
     text = re.sub(r"^:=\s*", "", text).strip()
 
