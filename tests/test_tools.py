@@ -219,9 +219,7 @@ class TestAxiomProbeAssembly:
     def test_probe_appended_only_when_requested(self):
         args = ("import Mathlib", "theorem foo : True :=", "by trivial")
         assert "#print axioms" not in tools_module.build_verification_code(*args)
-        assert tools_module.build_verification_code(*args, include_axiom_check=True).endswith(
-            "#print axioms foo"
-        )
+        assert tools_module.build_verification_code(*args, include_axiom_check=True).endswith("#print axioms foo")
 
     def test_probe_omitted_when_name_unparsed(self):
         code = tools_module.build_verification_code(

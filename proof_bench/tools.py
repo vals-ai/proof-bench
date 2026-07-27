@@ -220,11 +220,7 @@ def build_verification_code(header: str, formal: str, proof: str, *, include_axi
     drift -- is shared by every caller regardless.
     """
     statement = _statement_up_to_proof(formal)
-    code = (
-        f"{header}\n\n"
-        f"set_option maxHeartbeats {VERIFICATION_MAX_HEARTBEATS}\n\n"
-        f"{statement}\n{proof}"
-    )
+    code = f"{header}\n\nset_option maxHeartbeats {VERIFICATION_MAX_HEARTBEATS}\n\n{statement}\n{proof}"
     if include_axiom_check and (name := _declaration_name(statement)):
         code = f"{code}\n\n#print axioms {name}"
     return code
