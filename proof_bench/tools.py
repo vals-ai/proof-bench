@@ -103,8 +103,8 @@ class RunCodeTool(Tool):
         },
         "timeout": {
             "type": "number",
-            "description": "Timeout in seconds (cannot be more than 90 seconds).",
-            "maximum": 90,
+            "description": f"Timeout in seconds (cannot be more than {MAX_TIMEOUT} seconds).",
+            "maximum": MAX_TIMEOUT,
         },
     }
     required = ["code"]
@@ -149,7 +149,9 @@ def _statement_up_to_proof(formal: str) -> str:
     return stmt[: marker + 2].rstrip() if marker != -1 else f"{stmt} :="
 
 
-VERIFICATION_TIMEOUT_SECONDS = 90
+# The wall clock is the same cap `_normalize_timeout` already enforces on every Lean
+# run, so derive it rather than restating the number.
+VERIFICATION_TIMEOUT_SECONDS = MAX_TIMEOUT
 VERIFICATION_MAX_HEARTBEATS = 1_000_000
 
 
