@@ -119,9 +119,14 @@ class TestStatementUpToProof:
 class TestBuildVerificationCode:
     """Single source of truth for assembling gradeable Lean: header + statement + proof."""
 
+    @staticmethod
+    def _expected(body: str) -> str:
+        option = f"set_option maxHeartbeats {tools_module.VERIFICATION_MAX_HEARTBEATS}"
+        return f"import Mathlib\n\n{option}\n\n{body}"
+
     def test_orders_header_statement_proof(self):
         code = tools_module.build_verification_code("import Mathlib", "theorem t : True :=", "by trivial")
-        assert code == "import Mathlib\n\ntheorem t : True :=\nby trivial"
+        assert code == self._expected("theorem t : True :=\nby trivial")
 
     def test_preserves_let_binding_statement(self):
         formal = "theorem t : let Y := X; Y = X :="
@@ -131,7 +136,14 @@ class TestBuildVerificationCode:
 
     def test_strips_trailing_proof_body_from_formal(self):
         code = tools_module.build_verification_code("import Mathlib", "theorem t : True := sorry", "by trivial")
-        assert code == "import Mathlib\n\ntheorem t : True :=\nby trivial"
+        assert code == self._expected("theorem t : True :=\nby trivial")
+
+    def test_heartbeat_budget_is_file_level_before_statement(self):
+        """`set_option ... in` inside a proof cannot raise the declaration-level budget,
+        so the option must sit after the header and before the statement."""
+        code = tools_module.build_verification_code("import Mathlib", "theorem t : P :=", "by trivial")
+        option_pos = code.index(f"set_option maxHeartbeats {tools_module.VERIFICATION_MAX_HEARTBEATS}")
+        assert code.index("import Mathlib") < option_pos < code.index("theorem t : P :=")
 
 
 def test_verify_rejects_admit_without_compiling():

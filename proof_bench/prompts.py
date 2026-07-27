@@ -21,6 +21,7 @@ Use valid, correct Lean 4 syntax; the tools may be helpful if in doubt. Key Lean
 - Existential witnesses: `use 1, 2, 3` not `use [1, 2, 3]`
 - No indentation on tactics
 - Your submission must genuinely close every goal. Do not use `sorry`, `admit`, `axiom`, or `local_instance` (not even in comments or as a final step), and do not introduce new axioms or leave placeholder tactics. A proof that Lean accepts only with a `declaration uses 'sorry'` warning, or that relies on an added axiom, scores zero.
+- Verification budget: your submitted proof is compiled with `set_option maxHeartbeats 1000000` (file-level) and a 90-second wall-clock limit. `set_option` inside your proof cannot change these budgets. To test under grading conditions, put `set_option maxHeartbeats 1000000` at file level (after the imports) in your lean_run_code checks.
 """
 
 TOOL_GUIDANCE_TEMPLATE = """BUDGET: {max_turns} turns total. This is the total number of turns you have to submit your final Lean 4 proof for the theorem. Each turn allows UP TO 6 TOOL CALLS MAX (calls beyond 6 are dropped without warning).
