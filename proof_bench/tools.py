@@ -154,8 +154,47 @@ def _statement_up_to_proof(formal: str) -> str:
 VERIFICATION_TIMEOUT_SECONDS = MAX_TIMEOUT
 VERIFICATION_MAX_HEARTBEATS = 1_000_000
 
+# The axioms Mathlib itself is built on. Anything else in a submission's axiom
+# dependencies is an escape hatch rather than a proof -- notably `sorryAx` (from
+# `sorry`/`admit`) and `Lean.ofReduceBool`/`Lean.trustCompiler` (from
+# `native_decide`, which trusts the compiler and is a known way to "prove" False).
+VERIFICATION_AXIOM_ALLOWLIST = frozenset({"propext", "Classical.choice", "Quot.sound"})
 
-def build_verification_code(header: str, formal: str, proof: str) -> str:
+# Name of the declaration being graded, for the `#print axioms` probe. Only the
+# statement is scanned (never the header), so a header's own lemmas cannot be
+# mistaken for the target. Conservative by design: anything unexpected yields None,
+# which omits the probe rather than risking a spurious `unknown identifier` error
+# that would reject a valid proof. Statement text comes from the dataset, not the
+# model, so the model cannot manipulate this.
+_DECLARATION_NAME_RE = re.compile(
+    r"(?:\A|\n)\s*(?:@\[[^\]]*\]\s*)?(?:private\s+|protected\s+|nonrec\s+)*(?:theorem|lemma)\s+([^\s({\[:⦃⟨]+)"
+)
+
+_AXIOM_DEPENDENCY_RE = re.compile(r"depends on axioms:\s*\[([^\]]*)\]")
+
+
+def _declaration_name(statement: str) -> str | None:
+    """Return the name of the theorem/lemma a statement declares, or None."""
+    match = _DECLARATION_NAME_RE.search(statement)
+    return match.group(1) if match else None
+
+
+def _disallowed_axioms(result_text: str) -> list[str]:
+    """Axioms outside the allowlist reported by `#print axioms`, in order of appearance.
+
+    Lean prints either `'name' does not depend on any axioms` or
+    `'name' depends on axioms: [a, b, c]`.
+    """
+    disallowed: list[str] = []
+    for match in _AXIOM_DEPENDENCY_RE.finditer(result_text):
+        for axiom in match.group(1).split(","):
+            axiom = axiom.strip()
+            if axiom and axiom not in VERIFICATION_AXIOM_ALLOWLIST and axiom not in disallowed:
+                disallowed.append(axiom)
+    return disallowed
+
+
+def build_verification_code(header: str, formal: str, proof: str, *, include_axiom_check: bool = False) -> str:
     """Assemble the full Lean file that is compiled to grade a submission.
 
     This is the single source of truth for turning a submission into checkable Lean:
@@ -173,12 +212,18 @@ def build_verification_code(header: str, formal: str, proof: str) -> str:
     well inside the wall-clock limit. The wall clock
     (`VERIFICATION_TIMEOUT_SECONDS`) remains the safety bound for work heartbeats do
     not meter: kernel typechecking, imports, and LSP stalls.
+
+    `include_axiom_check` appends a `#print axioms` probe so the grader can inspect
+    what the accepted proof actually rests on (see `_disallowed_axioms`). It is
+    opt-in because only the grader needs it: recorded artifacts stay a clean,
+    compilable proof file. The statement/proof assembly itself -- the part that can
+    drift -- is shared by every caller regardless.
     """
-    return (
-        f"{header}\n\n"
-        f"set_option maxHeartbeats {VERIFICATION_MAX_HEARTBEATS}\n\n"
-        f"{_statement_up_to_proof(formal)}\n{proof}"
-    )
+    statement = _statement_up_to_proof(formal)
+    code = f"{header}\n\nset_option maxHeartbeats {VERIFICATION_MAX_HEARTBEATS}\n\n{statement}\n{proof}"
+    if include_axiom_check and (name := _declaration_name(statement)):
+        code = f"{code}\n\n#print axioms {name}"
+    return code
 
 
 class SubmitProofTool(Tool):
@@ -243,7 +288,7 @@ class SubmitProofTool(Tool):
         if re.search(r"\badmit\b", proof.lower()):
             return False, "Proof contains 'admit' - incomplete proof"
 
-        full_code = build_verification_code(header, formal, proof)
+        full_code = build_verification_code(header, formal, proof, include_axiom_check=True)
         try:
             result_text = await run_lean_code(
                 full_code, timeout=VERIFICATION_TIMEOUT_SECONDS, config=self._run_code_config
@@ -259,5 +304,12 @@ class SubmitProofTool(Tool):
             return False, f"Proof incomplete: {result_text[:500]}"
         if "uses 'sorry'" in result_lower:
             return False, f"Proof uses sorry/admit: {result_text[:500]}"
+
+        if disallowed := _disallowed_axioms(result_text):
+            return False, (
+                f"Proof depends on disallowed axioms: {', '.join(disallowed)}. "
+                f"Only {', '.join(sorted(VERIFICATION_AXIOM_ALLOWLIST))} are allowed "
+                "(these are what Mathlib itself is built on)."
+            )
 
         return True, "Proof verified successfully"

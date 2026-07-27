@@ -174,6 +174,60 @@ class TestPromptDisclosesGradingBudget:
         assert f"{tools_module.MAX_TIMEOUT} seconds" in schema["description"]
 
 
+class TestDeclarationName:
+    """Drives the `#print axioms` probe. Parsed from the statement only (never the
+    header) and conservatively: no name means no probe, so a parse miss can never
+    turn into a spurious `unknown identifier` rejection of a valid proof."""
+
+    def test_plain_theorem(self):
+        assert tools_module._declaration_name("theorem foo_bar : P :=") == "foo_bar"
+
+    def test_lemma_keyword(self):
+        assert tools_module._declaration_name("lemma foo.bar' : P :=") == "foo.bar'"
+
+    def test_name_followed_by_binders(self):
+        assert tools_module._declaration_name("theorem foo {X : Type*} (h : P) :\n    Q :=") == "foo"
+
+    def test_attribute_and_modifier_prefixes(self):
+        assert tools_module._declaration_name("@[simp]\nprivate theorem foo : P :=") == "foo"
+
+    def test_unnamed_declaration_yields_none(self):
+        assert tools_module._declaration_name("example : P :=") is None
+
+
+class TestDisallowedAxioms:
+    def test_mathlib_axioms_allowed(self):
+        out = "'t' depends on axioms: [propext, Classical.choice, Quot.sound]"
+        assert tools_module._disallowed_axioms(out) == []
+
+    def test_no_axioms_allowed(self):
+        assert tools_module._disallowed_axioms("'t' does not depend on any axioms") == []
+
+    def test_native_decide_axioms_rejected(self):
+        out = "'t' depends on axioms: [Lean.ofReduceBool, Lean.trustCompiler]"
+        assert tools_module._disallowed_axioms(out) == ["Lean.ofReduceBool", "Lean.trustCompiler"]
+
+    def test_sorry_axiom_rejected(self):
+        assert tools_module._disallowed_axioms("'t' depends on axioms: [sorryAx]") == ["sorryAx"]
+
+    def test_mixed_reports_only_disallowed(self):
+        out = "'t' depends on axioms: [propext, sorryAx, Classical.choice]"
+        assert tools_module._disallowed_axioms(out) == ["sorryAx"]
+
+
+class TestAxiomProbeAssembly:
+    def test_probe_appended_only_when_requested(self):
+        args = ("import Mathlib", "theorem foo : True :=", "by trivial")
+        assert "#print axioms" not in tools_module.build_verification_code(*args)
+        assert tools_module.build_verification_code(*args, include_axiom_check=True).endswith("#print axioms foo")
+
+    def test_probe_omitted_when_name_unparsed(self):
+        code = tools_module.build_verification_code(
+            "import Mathlib", "example : True :=", "by trivial", include_axiom_check=True
+        )
+        assert "#print axioms" not in code
+
+
 def test_verify_rejects_admit_without_compiling():
     tool = tools_module.SubmitProofTool(
         {"transport": "stdio"},
