@@ -1,6 +1,7 @@
 """Tests for tool definitions and execution logic."""
 
 import asyncio
+import logging
 import shutil
 
 import pytest
@@ -113,6 +114,34 @@ class TestStatementUpToProof:
     def test_let_binding_with_trailing_sorry(self):
         formal = "theorem t : let Y := X; Y = X := by sorry"
         assert tools_module._statement_up_to_proof(formal) == "theorem t : let Y := X; Y = X :="
+
+
+class TestBuildVerificationCode:
+    """Single source of truth for assembling gradeable Lean: header + statement + proof."""
+
+    def test_orders_header_statement_proof(self):
+        code = tools_module.build_verification_code("import Mathlib", "theorem t : True :=", "by trivial")
+        assert code == "import Mathlib\n\ntheorem t : True :=\nby trivial"
+
+    def test_preserves_let_binding_statement(self):
+        formal = "theorem t : let Y := X; Y = X :="
+        code = tools_module.build_verification_code("import Mathlib", formal, "by rfl")
+        assert "let Y := X" in code
+        assert code.endswith(":=\nby rfl")
+
+    def test_strips_trailing_proof_body_from_formal(self):
+        code = tools_module.build_verification_code("import Mathlib", "theorem t : True := sorry", "by trivial")
+        assert code == "import Mathlib\n\ntheorem t : True :=\nby trivial"
+
+
+def test_verify_rejects_admit_without_compiling():
+    tool = tools_module.SubmitProofTool(
+        {"transport": "stdio"},
+        {"header": "import Mathlib", "formal": "theorem t : True :="},
+    )
+    ok, msg = asyncio.run(tool._verify("by admit", logging.getLogger("test")))
+    assert ok is False
+    assert "admit" in msg.lower()
 
 
 class TestRunLeanCodeRecovery:

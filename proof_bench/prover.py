@@ -9,7 +9,7 @@ from model_library.agent import AgentResult, TurnSummary
 from .agent import run_agent
 from .mcp_client import _loop_exception_handlers, _suppress_mcp_cleanup_errors, cleanup_current_task_mcp_client
 from .prompts import build_prompt
-from .tools import ToolConfig
+from .tools import ToolConfig, build_verification_code
 from .utils import _strip_leading_empty_lines, _strip_response_and_format_proof, strip_comment_blocks
 
 logger = logging.getLogger(__name__)
@@ -157,10 +157,7 @@ async def _run_single_attempt(
 
     clean_header = strip_comment_blocks(item["header"])
     clean_header = "\n".join(_strip_leading_empty_lines(clean_header.split("\n")))
-    formal_code = item["formal"]
-    if ":=" in formal_code:
-        formal_code = formal_code.split(":=")[0].strip() + " :="
-    full_code = f"{clean_header}\n{formal_code}\n{processed_response}"
+    full_code = build_verification_code(clean_header, item["formal"], processed_response)
 
     is_valid = any(
         tc.success

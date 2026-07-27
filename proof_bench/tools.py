@@ -149,6 +149,18 @@ def _statement_up_to_proof(formal: str) -> str:
     return stmt[: marker + 2].rstrip() if marker != -1 else f"{stmt} :="
 
 
+def build_verification_code(header: str, formal: str, proof: str) -> str:
+    """Assemble the full Lean file that is compiled to grade a submission.
+
+    This is the single source of truth for turning a submission into checkable Lean:
+    `header`, then the statement up to its proof-assignment `:=` (see
+    `_statement_up_to_proof`), then the model's proof. Both the live grader
+    (`SubmitProofTool._verify`) and the batch pipeline (`prover.py`) must build the
+    code through this function so the graded code and the logged code cannot drift.
+    """
+    return f"{header}\n\n{_statement_up_to_proof(formal)}\n{proof}"
+
+
 class SubmitProofTool(Tool):
     """Proof submission and verification tool for model_library Agent."""
 
@@ -183,6 +195,11 @@ class SubmitProofTool(Tool):
         state["proof_text"] = proof
         state["verified"] = is_valid
         state["verify_message"] = verify_msg
+        state["full_proof_code"] = build_verification_code(
+            self._problem_context.get("header", ""),
+            self._problem_context.get("formal", ""),
+            proof,
+        )
 
         return ToolOutput(output=verify_msg, done=True, error=None if is_valid else verify_msg)
 
@@ -196,15 +213,13 @@ class SubmitProofTool(Tool):
         if not formal:
             return True, "Verification skipped (no formal statement)"
 
-        formal_clean = _statement_up_to_proof(formal)
-
         if "sorry" in proof.lower():
             return False, "Proof contains 'sorry' - incomplete proof"
 
         if re.search(r"\badmit\b", proof.lower()):
             return False, "Proof contains 'admit' - incomplete proof"
 
-        full_code = f"{header}\n\n{formal_clean}\n{proof}"
+        full_code = build_verification_code(header, formal, proof)
         try:
             result_text = await run_lean_code(full_code, timeout=90, config=self._run_code_config)
         except Exception as e:
