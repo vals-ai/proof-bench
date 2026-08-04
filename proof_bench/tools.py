@@ -21,6 +21,11 @@ from .mcp_client import (
     run_lean_code,
 )
 
+# Tools receive a logger from the agent; assembly happens outside any tool call, so it needs its
+# own. Used only to surface header shapes the assembly cannot account for (see
+# `_trailing_in_command_start`), which would otherwise mis-score silently.
+logger = logging.getLogger(__name__)
+
 
 class LoogleTool(Tool):
     """Loogle lemma search tool for model_library Agent."""
@@ -194,6 +199,80 @@ def _disallowed_axioms(result_text: str) -> list[str]:
     return disallowed
 
 
+# Header commands that take a trailing `in` and therefore bind to the single command that
+# follows them: `include sX in`, `open Foo in`, `attribute [...] in`, and friends.
+_IN_COMMAND_START_RE = re.compile(r"^\s*(?:include|omit|open|set_option|attribute|local|scoped|suppress_compilation)\b")
+# The `in` that closes such a command. It need not share a line with the keyword -- `attribute
+# [simp] foo\n  bar in` is one command over two lines -- so the keyword is found by walking back
+# from the `in` rather than by matching a single line against both.
+_TRAILING_IN_TOKEN_RE = re.compile(r"\bin\s*$")
+
+
+def _trailing_in_command_start(lines: list[str], end: int) -> int | None:
+    """Index of the line beginning the `... in` command that `lines[:end]` ends with, else None.
+
+    Walking back from the `in` (rather than requiring keyword and `in` on one line) is what makes
+    multi-line commands visible; a blank line bounds the search, since a command cannot begin on
+    the far side of one.
+    """
+    last = lines[end - 1]
+    if not _TRAILING_IN_TOKEN_RE.search(last) or last.lstrip().startswith("--"):
+        return None
+    for index in range(end - 1, -1, -1):
+        if _IN_COMMAND_START_RE.match(lines[index]):
+            return index
+        if not lines[index].strip():
+            break
+    # The header ends in an `in` that no known command keyword accounts for. Assembling anyway
+    # would put the budget inside that command's scope and produce exactly the ungradable file
+    # this function exists to prevent, so say so rather than fail silently.
+    logger.warning(
+        "Header ends with an unattributable `in` (%r); the heartbeat budget may land inside that "
+        "command's scope, which makes the declaration ungradable regardless of the proof. If this "
+        "is a real command form, add its keyword to _IN_COMMAND_START_RE.",
+        last.strip(),
+    )
+    return None
+
+
+def _split_trailing_in_commands(header: str) -> tuple[str, list[str]]:
+    """Split `header` into (everything else, its trailing `... in` commands).
+
+    A `... in` command applies to the *next* command only, so anything inserted between it and
+    the graded declaration silently steals the binding. Three v1p1 problems end their header
+    with `include sX in`, and emitting the heartbeat budget after the whole header put a
+    `set_option` in that slot: the binders were included into the option instead of the theorem,
+    the statement failed to elaborate (`Unknown identifier sX`), and the declaration fell back to
+    `sorryAx`. No submission could be graded as resolved on those problems, however correct its
+    proof -- the same shape of silent, submission-independent failure as the first-`:=`
+    truncation described in `_statement_up_to_proof`.
+
+    Returned separately rather than by relocating the budget, so that headers without a trailing
+    `in` assemble byte-for-byte as before, and so the benchmark's budget still follows any
+    `set_option` a header sets for itself.
+
+    Handles chains (`open Foo in` then `include sX in`), preserving their order, and commands
+    spanning several lines. A trailing `in` that cannot be attributed to a command keyword is
+    logged rather than silently mis-assembled.
+    """
+    lines = header.rstrip().splitlines()
+    trailing: list[str] = []
+    while lines:
+        # Blank separators between chained commands. Only `end` moves here, so if no command is
+        # found below they stay in the body rather than being eaten.
+        end = len(lines)
+        while end > 0 and not lines[end - 1].strip():
+            end -= 1
+        if end == 0:
+            break
+        start = _trailing_in_command_start(lines, end)
+        if start is None:
+            break
+        trailing = [line.rstrip() for line in lines[start:end]] + trailing
+        lines = lines[:start]
+    return "\n".join(lines).rstrip(), trailing
+
+
 def build_verification_code(header: str, formal: str, proof: str, *, include_axiom_check: bool = False) -> str:
     """Assemble the full Lean file that is compiled to grade a submission.
 
@@ -213,6 +292,11 @@ def build_verification_code(header: str, formal: str, proof: str, *, include_axi
     (`VERIFICATION_TIMEOUT_SECONDS`) remains the safety bound for work heartbeats do
     not meter: kernel typechecking, imports, and LSP stalls.
 
+    "Between header and statement" has one exception: a header ending in a `... in`
+    command binds to whatever comes next, so those commands are re-emitted after the
+    budget to keep them adjacent to the declaration (see
+    `_split_trailing_in_commands`).
+
     `include_axiom_check` appends a `#print axioms` probe so the grader can inspect
     what the accepted proof actually rests on (see `_disallowed_axioms`). It is
     opt-in because only the grader needs it: recorded artifacts stay a clean,
@@ -220,7 +304,13 @@ def build_verification_code(header: str, formal: str, proof: str, *, include_axi
     drift -- is shared by every caller regardless.
     """
     statement = _statement_up_to_proof(formal)
-    code = f"{header}\n\nset_option maxHeartbeats {VERIFICATION_MAX_HEARTBEATS}\n\n{statement}\n{proof}"
+    # A trailing `include ... in` / `open ... in` must stay adjacent to the declaration it feeds,
+    # so it is held back and re-emitted after the budget (see `_split_trailing_in_commands`).
+    body, trailing_in = _split_trailing_in_commands(header)
+    preamble = f"{body}\n\nset_option maxHeartbeats {VERIFICATION_MAX_HEARTBEATS}"
+    if trailing_in:
+        preamble = "{}\n\n{}".format(preamble, "\n".join(trailing_in))
+    code = f"{preamble}\n\n{statement}\n{proof}"
     if include_axiom_check and (name := _declaration_name(statement)):
         code = f"{code}\n\n#print axioms {name}"
     return code
