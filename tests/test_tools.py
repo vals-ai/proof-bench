@@ -179,6 +179,36 @@ class TestBuildVerificationCode:
             f"set_option maxHeartbeats {tools_module.VERIFICATION_MAX_HEARTBEATS}"
         )
 
+    def test_multi_line_in_command_is_detected(self):
+        """The `in` need not share a line with its keyword. Matching keyword and `in` on a single
+        line missed those, silently reproducing the original binding failure."""
+        header = "import Mathlib\n\nattribute [simp] foo\n    bar in"
+        code = tools_module.build_verification_code(header, "theorem t : P :=", "by trivial")
+        option = f"set_option maxHeartbeats {tools_module.VERIFICATION_MAX_HEARTBEATS}"
+        assert code.index(option) < code.index("attribute [simp] foo")
+        between = code[code.index("bar in") + len("bar in") : code.index("theorem t : P :=")]
+        assert between.strip() == ""
+
+    def test_unattributable_trailing_in_is_logged(self, caplog):
+        """A trailing `in` with no recognised keyword cannot be placed correctly. It must warn, not
+        assemble silently -- silent mis-assembly is the whole failure being fixed."""
+        header = "import Mathlib\n\nfoo_bar_baz qux in"
+        with caplog.at_level(logging.WARNING):
+            _ = tools_module.build_verification_code(header, "theorem t : P :=", "by trivial")
+        assert any("unattributable `in`" in record.message for record in caplog.records)
+
+    def test_comment_ending_in_the_word_in_does_not_warn(self, caplog):
+        header = "import Mathlib\n\n-- the budget goes in"
+        with caplog.at_level(logging.WARNING):
+            _ = tools_module.build_verification_code(header, "theorem t : P :=", "by trivial")
+        assert not any("unattributable `in`" in record.message for record in caplog.records)
+
+    def test_blank_lines_before_a_non_in_body_are_kept(self):
+        """Blank separators are only consumed when a trailing command is actually found."""
+        body, trailing = tools_module._split_trailing_in_commands("import Mathlib\n\nvariable (n : Nat)")
+        assert body == "import Mathlib\n\nvariable (n : Nat)"
+        assert trailing == []
+
     def test_header_without_trailing_in_is_unchanged(self):
         """The fix must not perturb the 197 of 200 v1p1 headers that have no trailing `in`."""
         header = "import Mathlib\n\nopen Topology Filter\n\nvariable {X : Type*}"
