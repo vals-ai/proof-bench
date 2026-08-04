@@ -9,11 +9,17 @@ import pytest
 from tests.support import install_model_library_stub, reload_module
 
 install_model_library_stub()
+# Reloaded before `tools` so that `tools`'s `from .mcp_client import ...` binds to this module
+# object, keeping the client cache the cleanup tests manipulate shared between the two.
+mcp_client_module = reload_module("proof_bench.mcp_client")
 tools_module = reload_module("proof_bench.tools")
 prompts_module = reload_module("proof_bench.prompts")
 ToolConfig = tools_module.ToolConfig
-cleanup_mcp_client = tools_module.cleanup_mcp_client
-cleanup_mcp_clients = tools_module.cleanup_mcp_clients
+# These two, and the `_task_clients` cache they operate on, moved from `tools` to `mcp_client` in
+# 36cbf9c without being re-exported. Reaching for them through `tools` raised AttributeError at
+# import time, which made this entire module uncollectable rather than failing a single test.
+cleanup_mcp_client = mcp_client_module.cleanup_mcp_client
+cleanup_mcp_clients = mcp_client_module.cleanup_mcp_clients
 
 HAS_LEAN_LSP_MCP = shutil.which("uvx") is not None
 
@@ -28,35 +34,35 @@ class _MockClosableClient:
 
 class TestMcpClientCleanup:
     def test_cleanup_mcp_client_only_closes_target(self):
-        tools_module._task_clients.clear()
+        mcp_client_module._task_clients.clear()
         first = _MockClosableClient()
         second = _MockClosableClient()
-        tools_module._task_clients[101] = first
-        tools_module._task_clients[202] = second
+        mcp_client_module._task_clients[101] = first
+        mcp_client_module._task_clients[202] = second
 
         try:
             asyncio.run(cleanup_mcp_client(101))
             assert first.close_count == 1
             assert second.close_count == 0
-            assert 101 not in tools_module._task_clients
-            assert 202 in tools_module._task_clients
+            assert 101 not in mcp_client_module._task_clients
+            assert 202 in mcp_client_module._task_clients
         finally:
-            tools_module._task_clients.clear()
+            mcp_client_module._task_clients.clear()
 
     def test_cleanup_mcp_clients_closes_all_cached_clients(self):
-        tools_module._task_clients.clear()
+        mcp_client_module._task_clients.clear()
         first = _MockClosableClient()
         second = _MockClosableClient()
-        tools_module._task_clients[101] = first
-        tools_module._task_clients[202] = second
+        mcp_client_module._task_clients[101] = first
+        mcp_client_module._task_clients[202] = second
 
         try:
             asyncio.run(cleanup_mcp_clients())
             assert first.close_count == 1
             assert second.close_count == 1
-            assert tools_module._task_clients == {}
+            assert mcp_client_module._task_clients == {}
         finally:
-            tools_module._task_clients.clear()
+            mcp_client_module._task_clients.clear()
 
 
 class TestCommandResolution:
@@ -145,6 +151,40 @@ class TestBuildVerificationCode:
         code = tools_module.build_verification_code("import Mathlib", "theorem t : P :=", "by trivial")
         option_pos = code.index(f"set_option maxHeartbeats {tools_module.VERIFICATION_MAX_HEARTBEATS}")
         assert code.index("import Mathlib") < option_pos < code.index("theorem t : P :=")
+
+    def test_trailing_include_stays_adjacent_to_the_declaration(self):
+        """`include sX in` binds to the next command. With the budget emitted between them it
+        bound to the `set_option`, so the binders never reached the theorem: Lean reported
+        `Unknown identifier sX` and the proof fell back to `sorryAx`, making the problem
+        unresolvable for every submission."""
+        header = "import Mathlib\n\nvariable (sX : Nat)\n\ninclude sX in"
+        code = tools_module.build_verification_code(header, "theorem t : P :=", "by trivial")
+        option = f"set_option maxHeartbeats {tools_module.VERIFICATION_MAX_HEARTBEATS}"
+        assert code.index(option) < code.index("include sX in") < code.index("theorem t : P :=")
+        # Nothing may sit between the `in` and the declaration it feeds.
+        between = code[code.index("include sX in") + len("include sX in") : code.index("theorem t : P :=")]
+        assert between.strip() == ""
+
+    def test_trailing_in_chain_is_kept_in_order(self):
+        header = "import Mathlib\n\nopen Foo in\ninclude sX in"
+        code = tools_module.build_verification_code(header, "theorem t : P :=", "by trivial")
+        assert code.index("open Foo in") < code.index("include sX in") < code.index("theorem t : P :=")
+
+    def test_budget_still_follows_a_header_that_sets_its_own(self):
+        """The budget is part of the benchmark definition, so it must win over a header's own
+        `set_option`; holding back only the trailing `... in` commands preserves that."""
+        header = "import Mathlib\n\nset_option maxHeartbeats 400000"
+        code = tools_module.build_verification_code(header, "theorem t : P :=", "by trivial")
+        assert code.index("set_option maxHeartbeats 400000") < code.index(
+            f"set_option maxHeartbeats {tools_module.VERIFICATION_MAX_HEARTBEATS}"
+        )
+
+    def test_header_without_trailing_in_is_unchanged(self):
+        """The fix must not perturb the 197 of 200 v1p1 headers that have no trailing `in`."""
+        header = "import Mathlib\n\nopen Topology Filter\n\nvariable {X : Type*}"
+        code = tools_module.build_verification_code(header, "theorem t : P :=", "by trivial")
+        option = f"set_option maxHeartbeats {tools_module.VERIFICATION_MAX_HEARTBEATS}"
+        assert code == f"{header}\n\n{option}\n\ntheorem t : P :=\nby trivial"
 
 
 class TestPromptDisclosesGradingBudget:
