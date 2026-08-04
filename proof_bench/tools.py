@@ -194,6 +194,41 @@ def _disallowed_axioms(result_text: str) -> list[str]:
     return disallowed
 
 
+# Header commands that take a trailing `in` and therefore bind to the single command that
+# follows them: `include sX in`, `open Foo in`, `attribute [...] in`, and friends.
+_TRAILING_IN_COMMAND_RE = re.compile(
+    r"^\s*(?:include|omit|open|set_option|attribute|local|scoped|suppress_compilation)\b.*\bin\s*$"
+)
+
+
+def _split_trailing_in_commands(header: str) -> tuple[str, list[str]]:
+    """Split `header` into (everything else, its trailing `... in` commands).
+
+    A `... in` command applies to the *next* command only, so anything inserted between it and
+    the graded declaration silently steals the binding. Three v1p1 problems end their header
+    with `include sX in`, and emitting the heartbeat budget after the whole header put a
+    `set_option` in that slot: the binders were included into the option instead of the theorem,
+    the statement failed to elaborate (`Unknown identifier sX`), and the declaration fell back to
+    `sorryAx`. No submission could be graded as resolved on those problems, however correct its
+    proof -- the same shape of silent, submission-independent failure as the first-`:=`
+    truncation described in `_statement_up_to_proof`.
+
+    Returned separately rather than by relocating the budget, so that headers without a trailing
+    `in` assemble byte-for-byte as before, and so the benchmark's budget still follows any
+    `set_option` a header sets for itself.
+    """
+    lines = header.rstrip().splitlines()
+    trailing: list[str] = []
+    while lines:
+        if not lines[-1].strip():  # blank line inside the trailing chain
+            _ = lines.pop()
+            continue
+        if not _TRAILING_IN_COMMAND_RE.match(lines[-1]):
+            break
+        trailing.insert(0, lines.pop().rstrip())
+    return "\n".join(lines).rstrip(), trailing
+
+
 def build_verification_code(header: str, formal: str, proof: str, *, include_axiom_check: bool = False) -> str:
     """Assemble the full Lean file that is compiled to grade a submission.
 
@@ -213,6 +248,11 @@ def build_verification_code(header: str, formal: str, proof: str, *, include_axi
     (`VERIFICATION_TIMEOUT_SECONDS`) remains the safety bound for work heartbeats do
     not meter: kernel typechecking, imports, and LSP stalls.
 
+    "Between header and statement" has one exception: a header ending in a `... in`
+    command binds to whatever comes next, so those commands are re-emitted after the
+    budget to keep them adjacent to the declaration (see
+    `_split_trailing_in_commands`).
+
     `include_axiom_check` appends a `#print axioms` probe so the grader can inspect
     what the accepted proof actually rests on (see `_disallowed_axioms`). It is
     opt-in because only the grader needs it: recorded artifacts stay a clean,
@@ -220,7 +260,13 @@ def build_verification_code(header: str, formal: str, proof: str, *, include_axi
     drift -- is shared by every caller regardless.
     """
     statement = _statement_up_to_proof(formal)
-    code = f"{header}\n\nset_option maxHeartbeats {VERIFICATION_MAX_HEARTBEATS}\n\n{statement}\n{proof}"
+    # A trailing `include ... in` / `open ... in` must stay adjacent to the declaration it feeds,
+    # so it is held back and re-emitted after the budget (see `_split_trailing_in_commands`).
+    body, trailing_in = _split_trailing_in_commands(header)
+    preamble = f"{body}\n\nset_option maxHeartbeats {VERIFICATION_MAX_HEARTBEATS}"
+    if trailing_in:
+        preamble = "{}\n\n{}".format(preamble, "\n".join(trailing_in))
+    code = f"{preamble}\n\n{statement}\n{proof}"
     if include_axiom_check and (name := _declaration_name(statement)):
         code = f"{code}\n\n#print axioms {name}"
     return code
