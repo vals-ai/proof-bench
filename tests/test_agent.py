@@ -2,11 +2,16 @@ import asyncio
 from types import SimpleNamespace
 
 import pytest
+from model_library.atif import ATIFTrajectory
 from model_library.base import TextInput
 from model_library.base.input import RawResponse
 
 import proof_bench.agent as agent_module
 from proof_bench.agent import _before_query, _is_empty_raw_response
+
+
+def test_locked_model_library_emits_atif_v1_7():
+    assert ATIFTrajectory.model_fields["schema_version"].default == "ATIF-v1.7"
 
 
 def test_is_empty_raw_response_detects_assistant_without_content_or_tools():
