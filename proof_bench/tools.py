@@ -159,11 +159,26 @@ def _statement_up_to_proof(formal: str) -> str:
 VERIFICATION_TIMEOUT_SECONDS = MAX_TIMEOUT
 VERIFICATION_MAX_HEARTBEATS = 1_000_000
 
-# The axioms Mathlib itself is built on. Anything else in a submission's axiom
-# dependencies is an escape hatch rather than a proof -- notably `sorryAx` (from
-# `sorry`/`admit`) and `Lean.ofReduceBool`/`Lean.trustCompiler` (from
-# `native_decide`, which trusts the compiler and is a known way to "prove" False).
-VERIFICATION_AXIOM_ALLOWLIST = frozenset({"propext", "Classical.choice", "Quot.sound"})
+# The axioms Mathlib itself is built on, plus the two `native_decide` introduces.
+# Anything else in a submission's axiom dependencies is an escape hatch rather than a
+# proof -- notably `sorryAx`, from `sorry`/`admit`, which stays rejected.
+#
+# `Lean.ofReduceBool`/`Lean.trustCompiler` are admitted deliberately and not because they
+# are harmless: `native_decide` discharges a goal by running compiled code, so it trusts
+# the compiler and the evaluator rather than the kernel, and a bug in either is a route to
+# proving False. They are allowed because the benchmark never told anyone otherwise. The
+# system prompt (`prompts.py`) forbids `sorry`, `admit`, `axiom`, `local_instance` and
+# *introducing new* axioms; `native_decide` introduces none, it leans on two that ship with
+# Lean. Rejecting it was therefore enforcing an unpublished rule, which silently cost seven
+# models a point each on v1.1 -- six on `number_theory_burton_ch6_1_ex13` and one on
+# `number_theory_ireland_and_rosen_ch1_ex_28b`, every one of them a proof that compiles
+# clean and fails on nothing else (decision: Jacob, 2026-08-12).
+#
+# Tightening this back up is a fair thing to want -- but it has to be published first: name
+# `native_decide` in the prompt, then remove these two, and treat that as a scoring change.
+VERIFICATION_AXIOM_ALLOWLIST = frozenset(
+    {"propext", "Classical.choice", "Quot.sound", "Lean.ofReduceBool", "Lean.trustCompiler"}
+)
 
 # Name of the declaration being graded, for the `#print axioms` probe. Only the
 # statement is scanned (never the header), so a header's own lemmas cannot be
@@ -399,7 +414,7 @@ class SubmitProofTool(Tool):
             return False, (
                 f"Proof depends on disallowed axioms: {', '.join(disallowed)}. "
                 f"Only {', '.join(sorted(VERIFICATION_AXIOM_ALLOWLIST))} are allowed "
-                "(these are what Mathlib itself is built on)."
+                "(Mathlib's own axioms, plus the two `native_decide` introduces)."
             )
 
         return True, "Proof verified successfully"
