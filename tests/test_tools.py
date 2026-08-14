@@ -273,9 +273,19 @@ class TestDisallowedAxioms:
     def test_no_axioms_allowed(self):
         assert tools_module._disallowed_axioms("'t' does not depend on any axioms") == []
 
-    def test_native_decide_axioms_rejected(self):
+    def test_native_decide_axioms_allowed(self):
+        """`native_decide` is accepted: the prompt forbids *introducing* axioms, and it
+        introduces none -- it depends on two that ship with Lean. Rejecting it enforced an
+        unpublished rule. Re-tightening means naming it in the prompt first."""
         out = "'t' depends on axioms: [Lean.ofReduceBool, Lean.trustCompiler]"
-        assert tools_module._disallowed_axioms(out) == ["Lean.ofReduceBool", "Lean.trustCompiler"]
+        assert tools_module._disallowed_axioms(out) == []
+
+    def test_sorry_still_rejected_alongside_native_decide(self):
+        """Admitting `native_decide` must not smuggle `sorryAx` in with it -- that pairing is
+        exactly what grok-4.5's v1.1 submission on `burton_ch6_1_ex13` looked like, and it
+        stays a zero."""
+        out = "'t' depends on axioms: [Lean.ofReduceBool, sorryAx, Lean.trustCompiler]"
+        assert tools_module._disallowed_axioms(out) == ["sorryAx"]
 
     def test_sorry_axiom_rejected(self):
         assert tools_module._disallowed_axioms("'t' depends on axioms: [sorryAx]") == ["sorryAx"]
