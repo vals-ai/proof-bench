@@ -186,8 +186,15 @@ VERIFICATION_AXIOM_ALLOWLIST = frozenset(
 # which omits the probe rather than risking a spurious `unknown identifier` error
 # that would reject a valid proof. Statement text comes from the dataset, not the
 # model, so the model cannot manipulate this.
+# A declaration may carry an explicit universe binder attached to its name, as in
+# `theorem foo.{u} ...`. The `.` there separates the name from the binder and is not part of
+# the name, but a dot is otherwise legal *inside* a name (`MeasureTheory.foo`), so only a dot
+# immediately preceding `{` is excluded. Capturing it produced `foo.` and emitted
+# `#print axioms foo.`, which does not parse -- turning a valid proof into a failed one, the
+# exact outcome the conservative parse below exists to prevent.
 _DECLARATION_NAME_RE = re.compile(
-    r"(?:\A|\n)\s*(?:@\[[^\]]*\]\s*)?(?:private\s+|protected\s+|nonrec\s+)*(?:theorem|lemma)\s+([^\s({\[:⦃⟨]+)"
+    r"(?:\A|\n)\s*(?:@\[[^\]]*\]\s*)?(?:private\s+|protected\s+|nonrec\s+)*(?:theorem|lemma)\s+"
+    r"((?:[^\s({\[:⦃⟨.]|\.(?!\{))+)"
 )
 
 _AXIOM_DEPENDENCY_RE = re.compile(r"depends on axioms:\s*\[([^\]]*)\]")
