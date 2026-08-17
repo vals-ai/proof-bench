@@ -264,6 +264,19 @@ class TestDeclarationName:
     def test_unnamed_declaration_yields_none(self):
         assert tools_module._declaration_name("example : P :=") is None
 
+    def test_universe_binder_is_not_part_of_the_name(self):
+        """`theorem foo.{u}` names `foo`; the `.` introduces the universe binder.
+
+        Capturing the dot emitted `#print axioms foo.`, which does not parse, so a proof that
+        Lean had accepted was reported as a failure."""
+        assert tools_module._declaration_name("theorem foo.{u} (X : Type u) : P :=") == "foo"
+        assert tools_module._declaration_name("theorem foo.{u, v} : P :=") == "foo"
+
+    def test_dotted_name_survives_the_universe_fix(self):
+        """Only a dot before `{` is a separator -- namespaced names keep their dots."""
+        assert tools_module._declaration_name("theorem MeasureTheory.foo_bar : P :=") == "MeasureTheory.foo_bar"
+        assert tools_module._declaration_name("theorem MeasureTheory.foo.{u} : P :=") == "MeasureTheory.foo"
+
 
 class TestDisallowedAxioms:
     def test_mathlib_axioms_allowed(self):
