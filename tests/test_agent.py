@@ -58,6 +58,17 @@ def test_run_agent_requests_non_scoring_atif_export(monkeypatch, tmp_path, custo
     run_kwargs = {}
     expected_result = object()
 
+    class GatewayModel:
+        loaded = False
+
+        async def ensure_metadata_loaded(self):
+            self.loaded = True
+
+        @property
+        def supports_tools(self):
+            assert self.loaded
+            return False
+
     class FakeAgent:
         def __init__(self, **kwargs):
             if custom_endpoint:
@@ -71,7 +82,7 @@ def test_run_agent_requests_non_scoring_atif_export(monkeypatch, tmp_path, custo
     monkeypatch.setattr(
         agent_module,
         "get_registry_model",
-        lambda model: SimpleNamespace(supports_tools=False),
+        lambda model: GatewayModel(),
     )
     monkeypatch.setattr(agent_module, "Agent", FakeAgent)
     monkeypatch.delenv("CUSTOM_ENDPOINT", raising=False)
