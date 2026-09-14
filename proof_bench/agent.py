@@ -154,9 +154,6 @@ async def run_agent(
         )
     else:
         model = get_registry_model(model_str)
-    ensure_metadata_loaded = getattr(model, "ensure_metadata_loaded", None)
-    if ensure_metadata_loaded is not None:
-        await ensure_metadata_loaded()
 
     tools = []
     if loogle_config and model.supports_tools:
