@@ -53,13 +53,16 @@ def test_before_query_reraises_last_error():
         _before_query([], last_error=error)
 
 
-def test_run_agent_requests_non_scoring_atif_export(monkeypatch, tmp_path):
+@pytest.mark.parametrize("custom_endpoint", [False, True])
+def test_run_agent_requests_non_scoring_atif_export(monkeypatch, tmp_path, custom_endpoint):
     run_kwargs = {}
     expected_result = object()
 
     class FakeAgent:
         def __init__(self, **kwargs):
-            pass
+            if custom_endpoint:
+                assert kwargs["llm"].custom_endpoint == "http://localhost:8766/v1"
+                assert kwargs["llm"].supports_tools
 
         async def run(self, *args, **kwargs):
             run_kwargs.update(kwargs)
@@ -71,10 +74,14 @@ def test_run_agent_requests_non_scoring_atif_export(monkeypatch, tmp_path):
         lambda model: SimpleNamespace(supports_tools=False),
     )
     monkeypatch.setattr(agent_module, "Agent", FakeAgent)
+    monkeypatch.delenv("CUSTOM_ENDPOINT", raising=False)
+    if custom_endpoint:
+        monkeypatch.setenv("CUSTOM_ENDPOINT", "http://localhost:8766/v1")
+        monkeypatch.setenv("CUSTOM_API_KEY", "test-key")
 
     result = asyncio.run(
         agent_module.run_agent(
-            "provider/model",
+            "openai/custom-model" if custom_endpoint else "provider/model",
             "prove this",
             question_id="proof-1",
             log_dir=tmp_path,
@@ -83,3 +90,10 @@ def test_run_agent_requests_non_scoring_atif_export(monkeypatch, tmp_path):
 
     assert result is expected_result
     assert run_kwargs["atif_export"] is True
+
+
+def test_custom_endpoint_requires_key_before_starting_agent(monkeypatch):
+    monkeypatch.setenv("CUSTOM_ENDPOINT", "http://localhost:8766/v1")
+    monkeypatch.delenv("CUSTOM_API_KEY", raising=False)
+    with pytest.raises(ValueError, match="CUSTOM_API_KEY"):
+        asyncio.run(agent_module.run_agent("openai/custom-model", "prove this"))

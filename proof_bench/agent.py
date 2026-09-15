@@ -6,6 +6,7 @@ Uses model_library Agent for the conversation loop.
 from __future__ import annotations
 
 import logging
+import os
 from pathlib import Path
 from typing import Any
 
@@ -20,9 +21,10 @@ from model_library.agent import (
     TurnLimit,
     TurnResult,
 )
-from model_library.base import TextInput
+from model_library.base import LLMConfig, TextInput
 from model_library.base.input import InputItem, RawResponse, SystemInput, ToolDefinition
-from model_library.registry_utils import get_registry_model
+from model_library.registry_utils import get_raw_model, get_registry_model
+from pydantic import SecretStr
 
 from .tools import LoogleTool, RunCodeTool, SubmitProofTool, ToolConfig
 
@@ -136,7 +138,22 @@ async def run_agent(
     `AgentResult` itself carries no state, which is why this is a mutable
     out-parameter (matching `model_library`'s own `Agent.run` signature).
     """
-    model = get_registry_model(model_str)
+    endpoint = os.environ.get("CUSTOM_ENDPOINT")
+    if endpoint:
+        api_key = os.environ.get("CUSTOM_API_KEY")
+        if not api_key:
+            raise ValueError("CUSTOM_ENDPOINT requires CUSTOM_API_KEY; supply the model server's API key")
+        model = get_raw_model(
+            model_str,
+            config=LLMConfig(
+                custom_endpoint=endpoint,
+                custom_api_key=SecretStr(api_key),
+                supports_tools=True,
+                supports_temperature=False,
+            ),
+        )
+    else:
+        model = get_registry_model(model_str)
 
     tools = []
     if loogle_config and model.supports_tools:
