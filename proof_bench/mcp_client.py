@@ -466,6 +466,10 @@ async def check_mcp_server(config: ToolConfig | None = None) -> tuple[bool, str]
         return False, f"Failed to connect: {e}"
 
 
+# The daemon binds its port only after Loogle has loaded its index.
+LOOGLE_DAEMON_STARTUP_TIMEOUT_SECONDS = 120.0
+
+
 async def _query_loogle_daemon(url: str, query: str, max_results: int) -> str:
     """Query the shared loogle daemon via HTTP."""
     import urllib.error
@@ -479,15 +483,23 @@ async def _query_loogle_daemon(url: str, query: str, max_results: int) -> str:
             headers={"Content-Type": "application/json"},
             method="POST",
         )
-        try:
-            with urllib.request.urlopen(req, timeout=35) as resp:
-                return resp.read().decode()
-        except urllib.error.URLError as e:
-            if "Connection refused" in str(e):
-                raise ConnectionError(
-                    f"Daemon not running at {url}. Start with: python -m proof_bench.loogle_daemon"
-                ) from e
-            raise
+        deadline = time.monotonic() + LOOGLE_DAEMON_STARTUP_TIMEOUT_SECONDS
+        delay = 0.5
+        while True:
+            try:
+                with urllib.request.urlopen(req, timeout=35) as resp:
+                    return resp.read().decode()
+            except urllib.error.URLError as e:
+                if "Connection refused" not in str(e):
+                    raise
+                if time.monotonic() >= deadline:
+                    raise ConnectionError(
+                        f"Daemon not running at {url} after waiting "
+                        f"{LOOGLE_DAEMON_STARTUP_TIMEOUT_SECONDS:.0f}s. "
+                        "Start with: python -m proof_bench.loogle_daemon"
+                    ) from e
+            time.sleep(min(delay, max(0.0, deadline - time.monotonic())))
+            delay = min(delay * 2, 5.0)
 
     loop = asyncio.get_running_loop()
     return await loop.run_in_executor(None, _do_request)
