@@ -3,6 +3,9 @@ import json
 import socket
 import threading
 import time
+import urllib.error
+import urllib.request
+from email.message import Message
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 import pytest
@@ -41,13 +44,17 @@ def _serve(port: int, status: int, body: dict) -> HTTPServer:
 def test_query_waits_for_a_daemon_that_is_still_loading():
     port = _free_port()
     servers: list[HTTPServer] = []
-    threading.Timer(1.0, lambda: servers.append(_serve(port, 200, {"hits": ["Nat.succ_le_iff"]}))).start()
+    timer = threading.Timer(1.0, lambda: servers.append(_serve(port, 200, {"hits": ["Nat.succ_le_iff"]})))
+    timer.start()
     start = time.monotonic()
     try:
         result = asyncio.run(mcp_client._query_loogle_daemon(f"http://127.0.0.1:{port}", "Nat.succ_le_iff", 5))
     finally:
+        timer.cancel()
+        timer.join()
         for server in servers:
             server.shutdown()
+            server.server_close()
     assert json.loads(result) == {"hits": ["Nat.succ_le_iff"]}
     assert time.monotonic() - start >= 1.0
 
@@ -59,13 +66,14 @@ def test_query_gives_up_on_a_daemon_that_never_starts(monkeypatch):
         asyncio.run(mcp_client._query_loogle_daemon(url, "Nat.succ_le_iff", 5))
 
 
-def test_server_errors_are_not_retried():
-    port = _free_port()
-    server = _serve(port, 500, {"error": "boom"})
-    start = time.monotonic()
-    try:
-        with pytest.raises(Exception, match="500"):
-            asyncio.run(mcp_client._query_loogle_daemon(f"http://127.0.0.1:{port}", "Nat.succ_le_iff", 5))
-    finally:
-        server.shutdown()
-    assert time.monotonic() - start < 1.0
+def test_server_errors_are_not_retried(monkeypatch):
+    calls = []
+
+    def fail_with_server_error(request, timeout):
+        calls.append(request.full_url)
+        raise urllib.error.HTTPError(request.full_url, 500, "boom", Message(), None)
+
+    monkeypatch.setattr(urllib.request, "urlopen", fail_with_server_error)
+    with pytest.raises(urllib.error.HTTPError):
+        asyncio.run(mcp_client._query_loogle_daemon("http://127.0.0.1:8765", "Nat.succ_le_iff", 5))
+    assert calls == ["http://127.0.0.1:8765/query"]
