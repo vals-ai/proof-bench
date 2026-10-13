@@ -10,6 +10,8 @@ make install
 source .venv/bin/activate
 ```
 
+The agent-registry wrapper selects `model-library[providers]` for direct routes and when `MODEL_GATEWAY_URL` is absent; Gateway installs use the base dependency. This source `make install` is local development setup, not the wrapper profile selector.
+
 Create a `.env` file with your API keys:
 
 ```bash
