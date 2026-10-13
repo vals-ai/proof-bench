@@ -1488,6 +1488,11 @@ dependencies = [
     { name = "python-dotenv" },
 ]
 
+[package.optional-dependencies]
+providers = [
+    { name = "model-library" },
+]
+
 [package.dev-dependencies]
 dev = [
     { name = "pytest" },
@@ -1498,8 +1503,10 @@ dev = [
 requires-dist = [
     { name = "mcp", specifier = ">=1.21.2" },
     { name = "model-library", specifier = "==0.1.33" },
+    { name = "model-library", extras = ["providers"], marker = "extra == 'providers'", specifier = "==0.1.33" },
     { name = "python-dotenv", specifier = ">=1.0" },
 ]
+provides-extras = ["providers"]
 
 [package.metadata.requires-dev]
 dev = [
