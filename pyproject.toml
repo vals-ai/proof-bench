@@ -42,3 +42,7 @@ ignore = [
 [tool.ruff.format]
 quote-style = "double"
 indent-style = "space"
+
+[tool.uv]
+exclude-newer = "7 days"
+exclude-newer-package = { certifi = false, model-library = false }
